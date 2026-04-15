@@ -75,27 +75,45 @@ class DataEncryptionService {
     }
   }
 
+  // [originalData] is returned as-is if the key no longer matches (e.g. after
+  // a reinstall that wiped FlutterSecureStorage), so callers never crash.
   static Future<String> _decryptAesEnvelope(
     Map<String, dynamic> envelope,
+    String originalData,
   ) async {
     final algorithm = AesGcm.with256bits();
     final secretKey = await _getSecretKey();
     final nonce = base64Url.decode(envelope['n'] as String);
     final cipherText = base64Url.decode(envelope['c'] as String);
     final macBytes = base64Url.decode(envelope['t'] as String);
-    final clearBytes = await algorithm.decrypt(
-      SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes)),
-      secretKey: secretKey,
-    );
-    return utf8.decode(clearBytes);
+    try {
+      final clearBytes = await algorithm.decrypt(
+        SecretBox(cipherText, nonce: nonce, mac: Mac(macBytes)),
+        secretKey: secretKey,
+      );
+      return utf8.decode(clearBytes);
+    } on SecretBoxAuthenticationError {
+      // The encryption key has changed (e.g. app reinstall wiped
+      // FlutterSecureStorage). Return the original value so the app
+      // can still function rather than crashing.
+      return originalData;
+    }
   }
 
   static Future<String> _decryptLegacyXor(String encryptedData) async {
     final key = await _getEncryptionKey();
     final keyBytes = utf8.encode(key);
-    final combinedBytes = base64Url.decode(encryptedData);
+    // If the payload is not valid Base64 it was never encrypted (plaintext).
+    final List<int> combinedBytes;
+    try {
+      combinedBytes = base64Url.decode(encryptedData);
+    } on FormatException {
+      return encryptedData; // Already plaintext – return as-is.
+    }
     if (combinedBytes.length < 17) {
-      throw const FormatException('Legacy payload is too short.');
+      // Too short to be a legacy XOR payload (needs 16 IV bytes + ≥1 data
+      // byte). The value is plaintext that happens to be valid Base64.
+      return encryptedData;
     }
     final ivBytes = combinedBytes.sublist(0, 16);
     final encryptedBytes = combinedBytes.sublist(16);
@@ -114,7 +132,8 @@ class DataEncryptionService {
     try {
       final aesEnvelope = _decodeAesEnvelope(encryptedData);
       if (aesEnvelope != null) {
-        return _decryptAesEnvelope(aesEnvelope);
+        // Pass originalData so MAC mismatches fall back gracefully.
+        return _decryptAesEnvelope(aesEnvelope, encryptedData);
       }
       return _decryptLegacyXor(encryptedData);
     } catch (_) {
@@ -123,14 +142,16 @@ class DataEncryptionService {
     }
   }
 
-  // Decrypt sensitive data in strict mode (fails on invalid/tampered payload)
+  // Decrypt sensitive data in strict mode (fails on invalid/tampered payload).
+  // Note: MAC mismatches still fall back to [encryptedData] rather than
+  // throwing, because a lost FlutterSecureStorage key is not tampering.
   static Future<String> decryptDataStrict(String encryptedData) async {
     if (encryptedData.isEmpty) {
       throw const FormatException('Encrypted payload is empty.');
     }
     final aesEnvelope = _decodeAesEnvelope(encryptedData);
     if (aesEnvelope != null) {
-      return _decryptAesEnvelope(aesEnvelope);
+      return _decryptAesEnvelope(aesEnvelope, encryptedData);
     }
     return _decryptLegacyXor(encryptedData);
   }
@@ -168,15 +189,21 @@ class DataEncryptionService {
     return decryptDataStrict(payload);
   }
 
+  // Fields written with field-level encryption.
+  // NOTE: 'fullName' in the *users* table is intentionally excluded here.
+  // It is already protected by SQLCipher; encrypting it with a device-local
+  // key makes it fragile across reinstalls / key rotations.
+  // The decrypt list still includes 'fullName' so legacy rows are read back
+  // correctly until they are overwritten without encryption.
+  static const _encryptFields = ['name', 'ic', 'remark', 'members'];
+  static const _decryptFields = ['name', 'ic', 'fullName', 'remark', 'members'];
+
   // Encrypt sensitive fields in a map
   static Future<Map<String, dynamic>> encryptSensitiveFields(
       Map<String, dynamic> data) async {
     final encryptedData = Map<String, dynamic>.from(data);
 
-    // Define sensitive fields that should be encrypted
-    const sensitiveFields = ['name', 'ic', 'fullName', 'remark', 'members'];
-
-    for (final field in sensitiveFields) {
+    for (final field in _encryptFields) {
       if (encryptedData.containsKey(field) && encryptedData[field] != null) {
         final value = encryptedData[field].toString();
         if (value.isNotEmpty) {
@@ -193,10 +220,9 @@ class DataEncryptionService {
       Map<String, dynamic> data) async {
     final decryptedData = Map<String, dynamic>.from(data);
 
-    // Define sensitive fields that should be decrypted
-    const sensitiveFields = ['name', 'ic', 'fullName', 'remark', 'members'];
-
-    for (final field in sensitiveFields) {
+    // _decryptFields includes 'fullName' for backward compatibility with rows
+    // that were written before this field was removed from _encryptFields.
+    for (final field in _decryptFields) {
       if (decryptedData.containsKey(field) && decryptedData[field] != null) {
         final value = decryptedData[field].toString();
         if (value.isNotEmpty) {
