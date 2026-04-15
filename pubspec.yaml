@@ -1,0 +1,54 @@
+name: tm_audit
+description: "A new Flutter project."
+publish_to: 'none'
+version: 1.2.0
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  pdf: ^3.10.7
+  printing: ^5.12.0
+  flutter_secure_storage: ^9.2.4
+  crypto: ^3.0.6
+  cryptography: ^2.7.0
+  path: ^1.9.0
+  path_provider: ^2.1.5
+  image: ^4.3.0
+  sqflite: ^2.4.1
+  sqflite_sqlcipher: ^3.1.2
+  sqflite_common_ffi: ^2.3.2
+  sqlcipher_flutter_libs: ^0.6.7
+  file_picker: ^10.0.0
+  permission_handler: ^12.0.0
+  flutter:
+    sdk: flutter
+  intl: ^0.20.2
+  image_picker: ^1.1.2
+  excel: ^2.1.0
+  share_plus: ^7.2.1
+  shared_preferences: ^2.5.3
+  geolocator: ^11.0.0
+  http: ^1.6.0
+
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+  assets:
+    - assets/cover_photo.png
+    - assets/tm_logo.png
+    - assets/app_icon.png
+    - assets/company_left_logo.png
+    - assets/NotoSans-Regular.ttf
+    - assets/NotoSansSymbols-Regular.ttf
+    - assets/DejaVuSans.ttf
+    - assets/Montserrat-Bold.ttf
+  fonts:
+    - family: NotoSans
+      fonts:
+        - asset: assets/NotoSans-Regular.ttf
+        - asset: assets/NotoSansSymbols-Regular.ttf
