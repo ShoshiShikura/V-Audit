@@ -11,6 +11,8 @@ import '../models/team.dart';
 import 'about_screen.dart';
 import 'login_screen.dart';
 import 'profile_screen.dart';
+import 'view_reports_screen.dart';
+import '../services/session_manager.dart';
 
 class DrawerHeaderSection extends StatelessWidget {
   final String userId;
@@ -189,6 +191,14 @@ class AppDrawer extends StatelessWidget {
             ),
           );
           break;
+        case 'reports':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ViewReportsScreen(userId: userId, role: role),
+            ),
+          );
+          break;
         // Add more cases for profile, settings, etc.
       }
     }
@@ -257,6 +267,22 @@ class AppDrawer extends StatelessWidget {
                       ? null
                       : () => navigateTo('profile'),
                 ),
+                // Reports navigation (admin-only)
+                if (SessionManager.isAdministrator(role))
+                  ListTile(
+                    leading: Icon(Icons.assessment,
+                        color: iconColor('reports') ?? const Color(0xFF8E44AD)),
+                    title: Text('Reports',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: textColor('reports'))),
+                    tileColor: tileColor('reports'),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    onTap: currentPage == 'reports'
+                        ? null
+                        : () => navigateTo('reports'),
+                  ),
                 if (currentPage == 'dashboard') ...[
                   // Profile link removed in revert
                   // Security Settings - Hidden for future implementation

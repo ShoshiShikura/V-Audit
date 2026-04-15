@@ -903,6 +903,64 @@ class DatabaseHelper {
   static String hashPassword(String password) {
     return sha256.convert(utf8.encode(password)).toString();
   }
+
+  // ── View Reports queries ──────────────────────────────────────────────
+
+  /// Returns ALL documents regardless of ownerId (for admin reports).
+  Future<List<Document>> getAllDocuments() async {
+    final db = await database;
+    final List<Map<String, dynamic>> maps = await db.query(
+      'documents',
+      orderBy: 'lastModified DESC',
+    );
+    return List.generate(maps.length, (i) => Document.fromMap(maps[i]));
+  }
+
+  /// Returns document count grouped by type, e.g. {'CM': 5, 'PM': 3, 'ND': 2}.
+  Future<Map<String, int>> getDocumentCountByType() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT type, COUNT(*) as cnt FROM documents GROUP BY type',
+    );
+    final counts = <String, int>{};
+    for (final row in result) {
+      final type = (row['type'] ?? '').toString();
+      final cnt = row['cnt'] is int ? row['cnt'] as int : 0;
+      if (type.isNotEmpty) counts[type] = cnt;
+    }
+    return counts;
+  }
+
+  /// Returns distinct auditor names from all documents.
+  Future<List<String>> getUniqueAuditors() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT DISTINCT auditor FROM documents WHERE auditor IS NOT NULL AND auditor != "" ORDER BY auditor ASC',
+    );
+    return result.map((r) => r['auditor'] as String).toList();
+  }
+
+  /// Returns distinct company names from all documents.
+  Future<List<String>> getUniqueCompaniesFromDocuments() async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT DISTINCT description FROM documents WHERE description IS NOT NULL AND description != "" ORDER BY description ASC',
+    );
+    return result.map((r) => r['description'] as String).toList();
+  }
+
+  /// Returns team count for a specific document.
+  Future<int> getTeamCountForDocument(String documentId) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as cnt FROM teams WHERE documentId = ?',
+      [documentId],
+    );
+    if (result.isNotEmpty) {
+      return result.first['cnt'] as int? ?? 0;
+    }
+    return 0;
+  }
 }
 
 Future<void> deleteDatabaseFile() async {
