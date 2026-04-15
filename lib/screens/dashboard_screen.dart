@@ -26,6 +26,7 @@ import 'package:file_picker/file_picker.dart';
 import '../services/permission_handler.dart';
 import 'worker_list_screen.dart';
 import 'view_reports_screen.dart';
+import 'manage_templates_screen.dart';
 
 class NoDocumentsFound extends StatelessWidget {
   const NoDocumentsFound({super.key});
@@ -1941,6 +1942,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                       label: const Text('View Reports'),
                       style: ElevatedButton.styleFrom(
                         backgroundColor: const Color(0xFF8E44AD),
+                        foregroundColor: Colors.white,
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                        elevation: 0,
+                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 12),
+              Row(
+                children: [
+                  Expanded(
+                    child: ElevatedButton.icon(
+                      onPressed: () {
+                        Navigator.push(
+                          context,
+                          MaterialPageRoute(
+                            builder: (_) => ManageTemplatesScreen(
+                              userId: widget.userId,
+                              role: widget.role,
+                            ),
+                          ),
+                        );
+                      },
+                      icon: const Icon(Icons.article, color: Colors.white),
+                      label: const Text('Audit Templates'),
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: const Color(0xFF2980B9),
                         foregroundColor: Colors.white,
                         shape: RoundedRectangleBorder(
                           borderRadius: BorderRadius.circular(18),

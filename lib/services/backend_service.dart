@@ -123,4 +123,31 @@ class BackendService {
       );
     }
   }
+
+  /// Best-effort template publish to server.
+  /// Non-blocking — template is saved locally regardless of server response.
+  static Future<bool> publishTemplate({
+    required String templateId,
+    required String name,
+    required int itemCount,
+  }) async {
+    final url = Uri.parse('$_baseUrl/publish_template.php');
+    try {
+      final response = await http.post(
+        url,
+        body: {
+          'templateId': templateId,
+          'name': name,
+          'itemCount': itemCount.toString(),
+        },
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['ok'] == true || decoded['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
 }

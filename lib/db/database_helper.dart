@@ -9,6 +9,7 @@ import 'package:tm_audit/models/team.dart';
 import '../models/document.dart';
 import '../models/user.dart';
 import '../models/worker.dart';
+import '../models/audit_template.dart';
 import '../services/encryption_service.dart';
 import '../services/data_encryption_service.dart';
 import '../services/session_manager.dart';
@@ -62,7 +63,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 10,
+        version: 11,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -80,7 +81,7 @@ class DatabaseHelper {
         return await openDatabase(
           encryptedPath,
           password: password,
-          version: 10,
+          version: 11,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
         );
@@ -105,7 +106,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 10,
+        version: 11,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -317,6 +318,29 @@ class DatabaseHelper {
       )
     ''');
 
+    await db.execute('''
+      CREATE TABLE audit_templates (
+        id TEXT PRIMARY KEY,
+        name TEXT,
+        description TEXT DEFAULT '',
+        isPublished INTEGER DEFAULT 0,
+        createdDate TEXT,
+        lastModified TEXT
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE template_items (
+        id TEXT PRIMARY KEY,
+        templateId TEXT,
+        category TEXT,
+        label TEXT,
+        itemType TEXT,
+        isMandatory INTEGER DEFAULT 0,
+        sortOrder INTEGER DEFAULT 0
+      )
+    ''');
+
     // Insert default administrator
     String hashedPassword = sha256.convert(utf8.encode('admin123')).toString();
     await db.insert('users', {
@@ -400,6 +424,9 @@ class DatabaseHelper {
         'status': 'active',
       });
     }
+
+    // Insert default audit template
+    await _seedDefaultTemplate(db);
   }
 
   Future<void> _onUpgrade(Database db, int oldVersion, int newVersion) async {
@@ -589,6 +616,37 @@ class DatabaseHelper {
           "ALTER TABLE summary_team ADD COLUMN ppeRed INTEGER DEFAULT 0;");
     } catch (e) {
       // Column might already exist, ignore error
+    }
+
+    if (oldVersion < 11) {
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS audit_templates (
+          id TEXT PRIMARY KEY,
+          name TEXT,
+          description TEXT DEFAULT '',
+          isPublished INTEGER DEFAULT 0,
+          createdDate TEXT,
+          lastModified TEXT
+        )
+      ''');
+
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS template_items (
+          id TEXT PRIMARY KEY,
+          templateId TEXT,
+          category TEXT,
+          label TEXT,
+          itemType TEXT,
+          isMandatory INTEGER DEFAULT 0,
+          sortOrder INTEGER DEFAULT 0
+        )
+      ''');
+
+      // Seed default template for existing installs
+      final existing = await db.query('audit_templates', limit: 1);
+      if (existing.isEmpty) {
+        await _seedDefaultTemplate(db);
+      }
     }
   }
 
@@ -960,6 +1018,116 @@ class DatabaseHelper {
       return result.first['cnt'] as int? ?? 0;
     }
     return 0;
+  }
+
+  // ── Audit Template CRUD ─────────────────────────────────────────────────
+
+  Future<List<AuditTemplate>> getAllTemplates() async {
+    final db = await database;
+    final maps = await db.query('audit_templates', orderBy: 'lastModified DESC');
+    return maps.map((m) => AuditTemplate.fromMap(m)).toList();
+  }
+
+  Future<AuditTemplate?> getTemplate(String id) async {
+    final db = await database;
+    final result = await db.query('audit_templates', where: 'id = ?', whereArgs: [id], limit: 1);
+    if (result.isNotEmpty) return AuditTemplate.fromMap(result.first);
+    return null;
+  }
+
+  Future<List<TemplateItem>> getTemplateItems(String templateId) async {
+    final db = await database;
+    final maps = await db.query(
+      'template_items',
+      where: 'templateId = ?',
+      whereArgs: [templateId],
+      orderBy: 'sortOrder ASC',
+    );
+    return maps.map((m) => TemplateItem.fromMap(m)).toList();
+  }
+
+  Future<void> insertTemplate(AuditTemplate template) async {
+    final db = await database;
+    await db.insert('audit_templates', template.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> updateTemplate(AuditTemplate template) async {
+    final db = await database;
+    await db.update('audit_templates', template.toMap(),
+        where: 'id = ?', whereArgs: [template.id]);
+  }
+
+  Future<void> deleteTemplate(String id) async {
+    final db = await database;
+    await db.delete('template_items', where: 'templateId = ?', whereArgs: [id]);
+    await db.delete('audit_templates', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> insertTemplateItem(TemplateItem item) async {
+    final db = await database;
+    await db.insert('template_items', item.toMap(),
+        conflictAlgorithm: ConflictAlgorithm.replace);
+  }
+
+  Future<void> deleteTemplateItem(String id) async {
+    final db = await database;
+    await db.delete('template_items', where: 'id = ?', whereArgs: [id]);
+  }
+
+  Future<void> replaceTemplateItems(String templateId, List<TemplateItem> items) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      await txn.delete('template_items', where: 'templateId = ?', whereArgs: [templateId]);
+      for (final item in items) {
+        await txn.insert('template_items', item.toMap());
+      }
+    });
+  }
+
+  Future<int> getTemplateItemCount(String templateId) async {
+    final db = await database;
+    final result = await db.rawQuery(
+      'SELECT COUNT(*) as cnt FROM template_items WHERE templateId = ?',
+      [templateId],
+    );
+    return result.first['cnt'] as int? ?? 0;
+  }
+
+  /// Seeds the default VMM audit template.
+  static Future<void> _seedDefaultTemplate(Database db) async {
+    final now = DateTime.now().toIso8601String();
+    const templateId = 'default_vmm_template';
+
+    await db.insert('audit_templates', {
+      'id': templateId,
+      'name': 'VMM Standard Audit',
+      'description': 'Default VMM audit checklist for telecommunications vendor material management.',
+      'isPublished': 1,
+      'createdDate': now,
+      'lastModified': now,
+    }, conflictAlgorithm: ConflictAlgorithm.ignore);
+
+    final defaultItems = <Map<String, dynamic>>[
+      {'category': 'Identity', 'label': 'Worker Name', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 0},
+      {'category': 'Identity', 'label': 'IC / Passport Number', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 1},
+      {'category': 'Attendance', 'label': 'Attendance', 'itemType': 'boolean', 'isMandatory': 1, 'sortOrder': 2},
+      {'category': 'Certification', 'label': 'NTSMP Expiry', 'itemType': 'date_expiry', 'isMandatory': 1, 'sortOrder': 3},
+      {'category': 'Certification', 'label': 'AESP Expiry', 'itemType': 'date_expiry', 'isMandatory': 1, 'sortOrder': 4},
+      {'category': 'Certification', 'label': 'AGTES Expiry', 'itemType': 'date_expiry', 'isMandatory': 1, 'sortOrder': 5},
+      {'category': 'Certification', 'label': 'CA2A Expiry', 'itemType': 'date_expiry', 'isMandatory': 0, 'sortOrder': 6},
+      {'category': 'Certification', 'label': 'CA2C Expiry', 'itemType': 'date_expiry', 'isMandatory': 0, 'sortOrder': 7},
+      {'category': 'Competency', 'label': 'Pole Proficiency', 'itemType': 'boolean', 'isMandatory': 1, 'sortOrder': 8},
+    ];
+
+    for (int i = 0; i < defaultItems.length; i++) {
+      final item = defaultItems[i];
+      await db.insert('template_items', {
+        'id': '${templateId}_item_$i',
+        'templateId': templateId,
+        ...item,
+      }, conflictAlgorithm: ConflictAlgorithm.ignore);
+    }
   }
 }
 
