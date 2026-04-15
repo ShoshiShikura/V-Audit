@@ -4,6 +4,7 @@ import 'dart:convert';
 import '../db/database_helper.dart';
 import '../models/user.dart';
 import '../services/backend_service.dart';
+import '../services/session_manager.dart';
 
 class AddUserScreen extends StatefulWidget {
   final String currentUserId;
@@ -83,7 +84,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
         role: role,
         fullName: fullName,
         // Option A: offline admin provisioning
-        activated: widget.currentUserRole == 'superadmin',
+        activated: SessionManager.isAdministrator(widget.currentUserRole),
       );
       await _dbHelper.addUser(newUser);
 
@@ -317,9 +318,10 @@ class _AddUserScreenState extends State<AddUserScreen> {
                           initialValue: _selectedRole,
                           items: const [
                             DropdownMenuItem<String>(
-                                value: 'user', child: Text('user')),
+                                value: 'auditor', child: Text('auditor')),
                             DropdownMenuItem<String>(
-                                value: 'superadmin', child: Text('superadmin')),
+                                value: 'administrator',
+                                child: Text('administrator')),
                           ],
                           onChanged: (value) =>
                               setState(() => _selectedRole = value),

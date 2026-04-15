@@ -14,10 +14,10 @@ void main() {
   });
 
   group('SessionManager role normalization', () {
-    test('maps administrator aliases to superadmin', () {
-      expect(SessionManager.normalizeRole('administrator'), 'superadmin');
-      expect(SessionManager.normalizeRole('admin'), 'superadmin');
-      expect(SessionManager.normalizeRole('superadmin'), 'superadmin');
+    test('maps administrator aliases to administrator', () {
+      expect(SessionManager.normalizeRole('administrator'), 'administrator');
+      expect(SessionManager.normalizeRole('admin'), 'administrator');
+      expect(SessionManager.normalizeRole('superadmin'), 'administrator');
     });
 
     test('maps auditor aliases to auditor', () {
@@ -36,7 +36,7 @@ void main() {
       await SessionManager.saveSession('u1', 'administrator');
       final session = await SessionManager.getSession();
       expect(session['id'], 'u1');
-      expect(session['role'], 'superadmin');
+      expect(session['role'], 'administrator');
       expect(session['token'], isNotNull);
       expect(session['loginAt'], isNotNull);
     });

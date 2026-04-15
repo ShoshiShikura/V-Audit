@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/user.dart';
+import '../services/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
@@ -58,15 +59,15 @@ class UserCard extends StatelessWidget {
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
                   decoration: BoxDecoration(
-                    color: user.role == 'superadmin'
+                    color: SessionManager.isAdministrator(user.role)
                         ? const Color(0xFF4B1EFF).withAlpha((0.1 * 255).toInt())
                         : Colors.grey.shade200,
                     borderRadius: BorderRadius.circular(12),
                   ),
                   child: Text(
-                    user.role,
+                    SessionManager.normalizeRole(user.role),
                     style: TextStyle(
-                      color: user.role == 'superadmin'
+                      color: SessionManager.isAdministrator(user.role)
                           ? const Color(0xFF4B1EFF)
                           : Colors.black54,
                       fontWeight: FontWeight.w600,
@@ -101,11 +102,11 @@ class UserCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Tooltip(
-                    message: (user.role == 'superadmin')
+                    message: SessionManager.isAdministrator(user.role)
                         ? 'This is the hashed password (SHA-256). The actual password is never stored.'
                         : 'Password is hidden for security.',
                     child: Text(
-                      (user.role == 'superadmin') && showPassword
+                      SessionManager.isAdministrator(user.role) && showPassword
                           ? 'Password: ${user.password}'
                           : 'Password: ••••••••',
                       style:
@@ -128,13 +129,18 @@ class UserCard extends StatelessWidget {
               mainAxisAlignment: MainAxisAlignment.end,
               children: [
                 DropdownButton<String>(
-                  value: ['user', 'superadmin'].contains(user.role)
-                      ? user.role
-                      : 'user',
+                  value: SessionManager.isAdministrator(user.role)
+                      ? SessionManager.roleAdministrator
+                      : SessionManager.roleAuditor,
                   items: const [
-                    DropdownMenuItem(value: 'user', child: Text('user')),
                     DropdownMenuItem(
-                        value: 'superadmin', child: Text('superadmin')),
+                      value: 'auditor',
+                      child: Text('auditor'),
+                    ),
+                    DropdownMenuItem(
+                      value: 'administrator',
+                      child: Text('administrator'),
+                    ),
                   ],
                   onChanged: isCurrentUser ? null : onRoleChanged,
                   borderRadius: BorderRadius.circular(12),
@@ -183,9 +189,12 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
 
   Future<void> _loadUsers() async {
     final users = await DatabaseHelper().getUsers();
-    users.sort((a, b) => a.role == 'superadmin' && b.role != 'superadmin'
-        ? -1
-        : (a.role != 'superadmin' && b.role == 'superadmin' ? 1 : 0));
+    users.sort((a, b) {
+      final aAdmin = SessionManager.isAdministrator(a.role);
+      final bAdmin = SessionManager.isAdministrator(b.role);
+      if (aAdmin == bAdmin) return 0;
+      return aAdmin ? -1 : 1;
+    });
     if (!mounted) return;
     setState(() {
       _users = users.take(_maxVisibleUsers).toList();
@@ -275,8 +284,7 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
               user: user,
               isCurrentUser: isCurrentUser,
               showPassword: showPassword,
-              onTogglePassword: (widget.currentUserId == 'superadmin' ||
-                      user.role == 'superadmin')
+              onTogglePassword: SessionManager.isAdministrator(user.role)
                   ? () => _togglePasswordVisibility(user.id)
                   : null,
               onResetPassword: isCurrentUser

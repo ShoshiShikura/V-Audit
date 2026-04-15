@@ -3,6 +3,9 @@ import 'dart:math';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class SessionManager {
+  static const String roleAdministrator = 'administrator';
+  static const String roleAuditor = 'auditor';
+
   static const _storage = FlutterSecureStorage();
   static const _keyId = 'id';
   static const _keyRole = 'role';
@@ -18,12 +21,20 @@ class SessionManager {
   static String normalizeRole(String? role) {
     final value = (role ?? '').trim().toLowerCase();
     if (value == 'superadmin' || value == 'administrator' || value == 'admin') {
-      return 'superadmin';
+      return roleAdministrator;
     }
     if (value == 'user' || value == 'auditor') {
-      return 'auditor';
+      return roleAuditor;
     }
-    return 'auditor';
+    return roleAuditor;
+  }
+
+  static bool isAdministrator(String? role) {
+    return normalizeRole(role) == roleAdministrator;
+  }
+
+  static bool isAuditor(String? role) {
+    return normalizeRole(role) == roleAuditor;
   }
 
   static Future<void> saveSession(String id, String role) async {

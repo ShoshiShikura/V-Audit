@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/user.dart';
+import '../services/session_manager.dart';
 import 'app_drawer.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
@@ -265,11 +266,13 @@ class _ProfileScreenState extends State<ProfileScreen> {
   }
 
   Color _getRoleColor(String role) {
-    return role == 'superadmin' ? const Color(0xFF4B1EFF) : Colors.black54;
+    return SessionManager.isAdministrator(role)
+        ? const Color(0xFF4B1EFF)
+        : Colors.black54;
   }
 
   Color _getRoleBackgroundColor(String role) {
-    return role == 'superadmin'
+    return SessionManager.isAdministrator(role)
         ? const Color(0xFF4B1EFF).withValues(alpha: 0.1)
         : Colors.grey.shade200;
   }
@@ -353,15 +356,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
                           ),
                           decoration: BoxDecoration(
                             color: _getRoleBackgroundColor(
-                                _userData?.role ?? 'user'),
+                                _userData?.role ?? SessionManager.roleAuditor),
                             borderRadius: BorderRadius.circular(12),
                           ),
                           child: Text(
-                            _userData?.role ?? 'user',
+                            SessionManager.normalizeRole(
+                              _userData?.role ?? SessionManager.roleAuditor,
+                            ),
                             style: TextStyle(
                               fontSize: 12,
                               fontWeight: FontWeight.w600,
-                              color: _getRoleColor(_userData?.role ?? 'user'),
+                              color: _getRoleColor(
+                                _userData?.role ?? SessionManager.roleAuditor,
+                              ),
                             ),
                           ),
                         ),

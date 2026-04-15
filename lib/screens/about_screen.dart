@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../services/session_manager.dart';
 import '../db/database_helper.dart';
 import '../models/preset_workers.dart';
 
@@ -168,7 +169,7 @@ class AboutScreen extends StatelessWidget {
                       },
                     ),
                     // --- MIGRATION BUTTON FOR SUPERADMIN ---
-                    if (role == 'superadmin') ...[
+                    if (SessionManager.isAdministrator(role)) ...[
                       const SizedBox(height: 16),
                       ElevatedButton.icon(
                         icon: const Icon(Icons.admin_panel_settings),

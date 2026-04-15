@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../services/encryption_service.dart';
 import '../services/data_encryption_service.dart';
+import '../services/session_manager.dart';
 import '../db/database_helper.dart';
 
 class SecuritySettingsScreen extends StatefulWidget {
@@ -37,10 +38,10 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
   Future<void> _rotateEncryptionKeys() async {
     final currentContext = context;
-    if (widget.role != 'superadmin') {
+    if (!SessionManager.isAdministrator(widget.role)) {
       ScaffoldMessenger.of(currentContext).showSnackBar(
         const SnackBar(
-            content: Text('Only superadmin can rotate encryption keys')),
+            content: Text('Only administrator can rotate encryption keys')),
       );
       return;
     }
@@ -98,9 +99,9 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
   Future<void> _clearAllData() async {
     final currentContext = context;
-    if (widget.role != 'superadmin') {
+    if (!SessionManager.isAdministrator(widget.role)) {
       ScaffoldMessenger.of(currentContext).showSnackBar(
-        const SnackBar(content: Text('Only superadmin can clear all data')),
+        const SnackBar(content: Text('Only administrator can clear all data')),
       );
       return;
     }
@@ -218,7 +219,7 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
               ),
             ),
             const SizedBox(height: 20),
-            if (widget.role == 'superadmin') ...[
+            if (SessionManager.isAdministrator(widget.role)) ...[
               Text(
                 'Administrator Actions',
                 style: Theme.of(context).textTheme.titleMedium?.copyWith(

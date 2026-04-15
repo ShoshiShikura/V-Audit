@@ -11,6 +11,7 @@ import '../models/user.dart';
 import '../models/worker.dart';
 import '../services/encryption_service.dart';
 import '../services/data_encryption_service.dart';
+import '../services/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
@@ -61,7 +62,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 9,
+        version: 10,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -79,7 +80,7 @@ class DatabaseHelper {
         return await openDatabase(
           encryptedPath,
           password: password,
-          version: 9,
+          version: 10,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
         );
@@ -104,7 +105,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 9,
+        version: 10,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -141,7 +142,7 @@ class DatabaseHelper {
       final encryptedDb = await openDatabase(
         encryptedPath,
         password: password,
-        version: 9,
+        version: 10,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -316,13 +317,13 @@ class DatabaseHelper {
       )
     ''');
 
-    // Insert default superadmin
+    // Insert default administrator
     String hashedPassword = sha256.convert(utf8.encode('admin123')).toString();
     await db.insert('users', {
       'id': 'superadmin',
       'password': hashedPassword,
-      'role': 'superadmin',
-      'fullName': 'Superadmin',
+      'role': SessionManager.roleAdministrator,
+      'fullName': 'Administrator',
       'activated': 1,
     });
 
@@ -563,6 +564,18 @@ class DatabaseHelper {
       }
     }
 
+    if (oldVersion < 10) {
+      // Normalize legacy role vocabulary.
+      await db.rawUpdate(
+        "UPDATE users SET role = ? WHERE lower(role) IN ('superadmin','admin')",
+        [SessionManager.roleAdministrator],
+      );
+      await db.rawUpdate(
+        "UPDATE users SET role = ? WHERE lower(role) = 'user'",
+        [SessionManager.roleAuditor],
+      );
+    }
+
     // Add summary_team columns safely (check if they exist first)
     try {
       await db.execute(
@@ -590,7 +603,7 @@ class DatabaseHelper {
       return User(
         id: decryptedData['id'] as String,
         password: decryptedData['password'] as String,
-        role: decryptedData['role'] as String,
+        role: SessionManager.normalizeRole(decryptedData['role'] as String?),
         fullName: decryptedData['fullName'] as String? ?? '',
         activated: (decryptedData['activated'] ?? 0) == 1,
       );
@@ -603,6 +616,7 @@ class DatabaseHelper {
   Future<void> addUser(User user) async {
     final db = await database;
     final userMap = user.toMap();
+    userMap['role'] = SessionManager.normalizeRole(userMap['role']?.toString());
 
     // Encrypt sensitive user data
     final encryptedUserMap =
@@ -622,7 +636,7 @@ class DatabaseHelper {
     final userMap = {
       'id': id,
       'password': hashedPassword,
-      'role': role,
+      'role': SessionManager.normalizeRole(role),
       'fullName': fullName,
       'activated': 1,
     };
@@ -641,7 +655,7 @@ class DatabaseHelper {
     final db = await database;
     await db.update(
       'users',
-      {'role': role},
+      {'role': SessionManager.normalizeRole(role)},
       where: 'id = ?',
       whereArgs: [id],
     );
@@ -677,6 +691,8 @@ class DatabaseHelper {
       // Decrypt sensitive user data
       final decryptedData =
           await DataEncryptionService.decryptSensitiveFields(map);
+      decryptedData['role'] =
+          SessionManager.normalizeRole(decryptedData['role']?.toString());
       decryptedUsers.add(User.fromMap(decryptedData));
     }
 

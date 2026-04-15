@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../services/backend_service.dart';
+import '../services/session_manager.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:intl/intl.dart';
 import '../db/database_helper.dart';
@@ -1869,7 +1870,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 16),
             // Superadmin-only section
-            if (widget.role == 'superadmin') ...[
+            if (SessionManager.isAdministrator(widget.role)) ...[
               Row(
                 children: [
                   Expanded(
