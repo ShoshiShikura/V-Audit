@@ -2,31 +2,42 @@
 /**
  * list_users.php — V-Audit API
  * Returns all registered users from the MySQL database.
- * Place this file alongside login.php in your XAMPP htdocs/vaudit_api/ folder.
  */
 
-header('Content-Type: application/json');
+declare(strict_types=1);
 
-$host = 'localhost';
-$db   = 'vaudit';
-$user = 'root';
-$pass = '';
+header('Content-Type: application/json; charset=utf-8');
+
+function respond(array $data, int $status = 200): void {
+  http_response_code($status);
+  echo json_encode($data, JSON_UNESCAPED_SLASHES);
+  exit;
+}
+
+// DB config (must match login.php)
+$dbHost = '127.0.0.1';
+$dbName = 'v_audit';
+$dbUser = 'root';
+$dbPass = '';
 
 try {
-    $pdo = new PDO("mysql:host=$host;dbname=$db;charset=utf8", $user, $pass);
-    $pdo->setAttribute(PDO::ATTR_ERRMODE, PDO::ERRMODE_EXCEPTION);
+  $pdo = new PDO(
+    "mysql:host={$dbHost};dbname={$dbName};charset=utf8mb4",
+    $dbUser,
+    $dbPass,
+    [
+      PDO::ATTR_ERRMODE => PDO::ERRMODE_EXCEPTION,
+      PDO::ATTR_DEFAULT_FETCH_MODE => PDO::FETCH_ASSOC,
+    ]
+  );
 
-    $stmt = $pdo->query("SELECT id, role, fullName FROM users");
-    $users = $stmt->fetchAll(PDO::FETCH_ASSOC);
+  $stmt = $pdo->query("SELECT id, role, fullName FROM users");
+  $users = $stmt->fetchAll();
 
-    echo json_encode([
-        'ok' => true,
-        'users' => $users,
-    ]);
-} catch (PDOException $e) {
-    http_response_code(500);
-    echo json_encode([
-        'ok' => false,
-        'message' => 'Database error: ' . $e->getMessage(),
-    ]);
+  respond([
+    'ok' => true,
+    'users' => $users,
+  ]);
+} catch (Throwable $e) {
+  respond(['ok' => false, 'message' => 'Server error: ' . $e->getMessage()], 500);
 }
