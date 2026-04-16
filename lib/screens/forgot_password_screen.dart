@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/user.dart';
+import '../services/backend_service.dart';
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -12,6 +13,7 @@ class ForgotPasswordScreen extends StatefulWidget {
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _usernameController = TextEditingController();
   bool _userFound = false;
+  bool _isChecking = false;
   String? _foundUserName;
 
   Future<void> _checkUser() async {
@@ -24,29 +26,55 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       return;
     }
 
-    final db = DatabaseHelper();
-    final users = await db.getUsers();
-    User? user;
-    for (final u in users) {
-      if (u.id.toLowerCase() == username.toLowerCase()) {
-        user = u;
-        break;
+    setState(() => _isChecking = true);
+
+    try {
+      // 1. Check local database first
+      final db = DatabaseHelper();
+      final users = await db.getUsers();
+      User? user;
+      for (final u in users) {
+        if (u.id.toLowerCase() == username.toLowerCase()) {
+          user = u;
+          break;
+        }
       }
-    }
 
-    if (!currentContext.mounted) return;
+      if (!currentContext.mounted) return;
 
-    if (user == null) {
+      if (user != null) {
+        setState(() {
+          _userFound = true;
+          _foundUserName = user!.fullName.isNotEmpty ? user.fullName : user.id;
+        });
+        return;
+      }
+
+      // 2. Not found locally — try server
+      final serverUsers = await BackendService.fetchUsersFromServer();
+      if (!currentContext.mounted) return;
+
+      if (serverUsers != null) {
+        for (final su in serverUsers) {
+          final sid = su['id']?.toString() ?? '';
+          if (sid.toLowerCase() == username.toLowerCase()) {
+            final fullName = su['fullName']?.toString() ?? sid;
+            setState(() {
+              _userFound = true;
+              _foundUserName = fullName.isNotEmpty ? fullName : sid;
+            });
+            return;
+          }
+        }
+      }
+
+      // 3. Not found anywhere
       ScaffoldMessenger.of(currentContext).showSnackBar(
         const SnackBar(content: Text('No user found with that username.')),
       );
-      return;
+    } finally {
+      if (mounted) setState(() => _isChecking = false);
     }
-
-    setState(() {
-      _userFound = true;
-      _foundUserName = user!.fullName.isNotEmpty ? user.fullName : user.id;
-    });
   }
 
   @override
@@ -119,7 +147,7 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           SizedBox(
             width: double.infinity,
             child: ElevatedButton(
-              onPressed: _checkUser,
+              onPressed: _isChecking ? null : _checkUser,
               style: ElevatedButton.styleFrom(
                 backgroundColor: const Color(0xFF4B1EFF),
                 foregroundColor: Colors.white,
@@ -128,8 +156,17 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
                 ),
                 padding: const EdgeInsets.symmetric(vertical: 14),
               ),
-              child: const Text('Continue',
-                  style: TextStyle(fontWeight: FontWeight.bold)),
+              child: _isChecking
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: Colors.white,
+                      ),
+                    )
+                  : const Text('Continue',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
             ),
           ),
         ],
@@ -175,20 +212,18 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
               color: const Color(0xFFF0F4FF),
               borderRadius: BorderRadius.circular(12),
             ),
-            child: Column(
+            child: Row(
               children: [
-                Row(
-                  children: [
-                    const Icon(Icons.person, size: 18, color: Color(0xFF4B1EFF)),
-                    const SizedBox(width: 8),
-                    Text(
-                      'Account: $_foundUserName',
-                      style: const TextStyle(
-                        fontWeight: FontWeight.w600,
-                        fontSize: 15,
-                      ),
+                const Icon(Icons.person, size: 18, color: Color(0xFF4B1EFF)),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    'Account: $_foundUserName',
+                    style: const TextStyle(
+                      fontWeight: FontWeight.w600,
+                      fontSize: 15,
                     ),
-                  ],
+                  ),
                 ),
               ],
             ),

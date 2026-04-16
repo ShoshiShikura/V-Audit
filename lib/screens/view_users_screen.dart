@@ -4,6 +4,7 @@ import '../models/user.dart';
 import '../services/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import '../services/backend_service.dart';
 
 class UserCard extends StatelessWidget {
   final User user;
@@ -196,6 +197,8 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
     super.initState();
     _loadUsers();
   }
+
+  bool _isSyncing = false;
 
   Future<void> _loadUsers() async {
     final users = await DatabaseHelper().getUsers();
@@ -403,6 +406,67 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
     });
   }
 
+  /// Sync users from XAMPP server into local database.
+  Future<void> _syncUsersFromServer() async {
+    final currentContext = context;
+    setState(() => _isSyncing = true);
+    try {
+      final serverUsers = await BackendService.fetchUsersFromServer();
+      if (serverUsers == null) {
+        if (!currentContext.mounted) return;
+        ScaffoldMessenger.of(currentContext).showSnackBar(
+          const SnackBar(
+            content: Text(
+              'Could not reach server. Make sure XAMPP is running and you are connected.',
+            ),
+          ),
+        );
+        return;
+      }
+
+      final db = DatabaseHelper();
+      int synced = 0;
+      for (final su in serverUsers) {
+        final id = su['id']?.toString() ?? '';
+        final role = su['role']?.toString() ?? 'auditor';
+        final fullName = su['fullName']?.toString() ?? '';
+        if (id.isEmpty) continue;
+
+        // Only insert users that don't exist locally yet.
+        // Don't overwrite existing local passwords.
+        final existingUser = await db.getUser(id);
+        if (existingUser == null) {
+          await db.upsertActivatedUser(
+            id: id,
+            hashedPassword: '', // No password — they must log in or admin resets
+            role: SessionManager.normalizeRole(role),
+            fullName: fullName,
+          );
+          synced++;
+        }
+      }
+
+      await _loadUsers();
+      if (!currentContext.mounted) return;
+      ScaffoldMessenger.of(currentContext).showSnackBar(
+        SnackBar(
+          content: Text(
+            synced > 0
+                ? 'Synced $synced new user(s) from server.'
+                : 'All server users already exist locally.',
+          ),
+        ),
+      );
+    } catch (e) {
+      if (!currentContext.mounted) return;
+      ScaffoldMessenger.of(currentContext).showSnackBar(
+        SnackBar(content: Text('Sync failed: $e')),
+      );
+    } finally {
+      if (mounted) setState(() => _isSyncing = false);
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -411,6 +475,22 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0.5,
+        actions: [
+          _isSyncing
+              ? const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  ),
+                )
+              : IconButton(
+                  icon: const Icon(Icons.cloud_download),
+                  tooltip: 'Sync from Server',
+                  onPressed: _syncUsersFromServer,
+                ),
+        ],
       ),
       backgroundColor: const Color(0xFFF7F8FA),
       body: Padding(

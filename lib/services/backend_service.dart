@@ -150,4 +150,22 @@ class BackendService {
       return false;
     }
   }
+
+  /// Fetches all users from the central MySQL database.
+  /// Returns a list of {id, role, fullName} maps, or null on failure.
+  static Future<List<Map<String, dynamic>>?> fetchUsersFromServer() async {
+    final url = Uri.parse('$_baseUrl/list_users.php');
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 5));
+      if (response.statusCode != 200) return null;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return null;
+      if (decoded['ok'] != true) return null;
+      final users = decoded['users'];
+      if (users is! List) return null;
+      return users.cast<Map<String, dynamic>>();
+    } catch (_) {
+      return null;
+    }
+  }
 }
