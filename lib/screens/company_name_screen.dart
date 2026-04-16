@@ -122,9 +122,21 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
     required double altitude,
   }) async {
     final bytes = await originalFile.readAsBytes();
-    final decoded = img.decodeImage(bytes);
+    var decoded = img.decodeImage(bytes);
     if (decoded == null) {
       throw Exception('Unsupported image format.');
+    }
+
+    // Scale up tiny images (e.g. emulator virtual camera) so the stamp is visible.
+    const int minStampWidth = 800;
+    if (decoded.width < minStampWidth) {
+      final scale = minStampWidth / decoded.width;
+      decoded = img.copyResize(
+        decoded,
+        width: minStampWidth,
+        height: (decoded.height * scale).round(),
+        interpolation: img.Interpolation.cubic,
+      );
     }
 
     // Stamp block (bottom-left)
@@ -134,7 +146,8 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
       'Altitude: ${altitude.toStringAsFixed(1)} m',
     ];
 
-    final font = img.arial24;
+    // Use arial14 for smaller images, arial24 for normal+
+    final font = decoded.width < 600 ? img.arial14 : img.arial24;
     final pad = ((decoded.width * 0.02).round()).clamp(8, 24);
     final lineGap = 6;
     final lineHeight = (font.lineHeight + lineGap).round();
@@ -151,14 +164,15 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
     if (blockW > maxW) blockW = maxW;
 
     final x = pad;
-    final y = decoded.height - blockH - pad;
+    // Clamp y to 0 so the stamp is always visible even on very small images
+    final y = (decoded.height - blockH - pad).clamp(0, decoded.height - 1);
 
     img.fillRect(
       decoded,
       x1: x,
       y1: y,
-      x2: x + blockW,
-      y2: y + blockH,
+      x2: (x + blockW).clamp(0, decoded.width),
+      y2: (y + blockH).clamp(0, decoded.height),
       color: img.ColorRgba8(0, 0, 0, 150),
     );
 
