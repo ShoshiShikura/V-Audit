@@ -731,6 +731,16 @@ class DatabaseHelper {
     );
   }
 
+  Future<void> updateUserFullName(String id, String fullName) async {
+    final db = await database;
+    await db.update(
+      'users',
+      {'fullName': fullName},
+      where: 'id = ?',
+      whereArgs: [id],
+    );
+  }
+
   Future<void> deleteUser(String id) async {
     final db = await database;
     await db.delete(

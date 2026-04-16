@@ -13,6 +13,7 @@ class UserCard extends StatelessWidget {
   final VoidCallback? onResetPassword;
   final VoidCallback? onDeleteUser;
   final ValueChanged<String?>? onRoleChanged;
+  final VoidCallback? onEditName;
   const UserCard({
     super.key,
     required this.user,
@@ -22,6 +23,7 @@ class UserCard extends StatelessWidget {
     this.onResetPassword,
     this.onDeleteUser,
     this.onRoleChanged,
+    this.onEditName,
   });
   @override
   Widget build(BuildContext context) {
@@ -146,17 +148,25 @@ class UserCard extends StatelessWidget {
                   borderRadius: BorderRadius.circular(12),
                   underline: const SizedBox(),
                 ),
-                const SizedBox(width: 8),
-                // IconButton(
-                //   icon: const Icon(Icons.lock_reset, color: Color(0xFF2ECC71)),
-                //   tooltip: 'Reset Password',
-                //   onPressed: isCurrentUser ? null : onResetPassword,
-                // ),
-                IconButton(
-                  icon: const Icon(Icons.delete, color: Colors.red),
-                  tooltip: 'Delete User',
-                  onPressed: isCurrentUser ? null : onDeleteUser,
-                ),
+                const SizedBox(width: 4),
+                if (!isCurrentUser && onEditName != null)
+                  IconButton(
+                    icon: const Icon(Icons.edit, color: Color(0xFF4B1EFF)),
+                    tooltip: 'Edit Full Name',
+                    onPressed: onEditName,
+                  ),
+                if (!isCurrentUser && onResetPassword != null)
+                  IconButton(
+                    icon: const Icon(Icons.lock_reset, color: Color(0xFF2ECC71)),
+                    tooltip: 'Reset Password',
+                    onPressed: onResetPassword,
+                  ),
+                if (!isCurrentUser && onDeleteUser != null)
+                  IconButton(
+                    icon: const Icon(Icons.delete, color: Colors.red),
+                    tooltip: 'Delete User',
+                    onPressed: onDeleteUser,
+                  ),
               ],
             ),
           ],
@@ -215,11 +225,143 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
   }
 
   Future<void> _resetPassword(String id) async {
-    final hashed = sha256.convert(utf8.encode('password123')).toString();
+    final passwordController = TextEditingController();
+    final confirmController = TextEditingController();
+    final formKey = GlobalKey<FormState>();
+    bool showPassword = false;
+
+    final newPassword = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => StatefulBuilder(
+        builder: (context, setDialogState) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+          title: Text('Reset Password for $id'),
+          content: Form(
+            key: formKey,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                const Text(
+                  'Enter a new password for this user. Share it with them securely (in-person, call, or message).',
+                  style: TextStyle(fontSize: 13, color: Colors.grey),
+                ),
+                const SizedBox(height: 16),
+                TextFormField(
+                  controller: passwordController,
+                  obscureText: !showPassword,
+                  decoration: InputDecoration(
+                    labelText: 'New Password',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                    suffixIcon: IconButton(
+                      icon: Icon(showPassword ? Icons.visibility_off : Icons.visibility),
+                      onPressed: () => setDialogState(() => showPassword = !showPassword),
+                    ),
+                  ),
+                  validator: (val) {
+                    if (val == null || val.trim().isEmpty) return 'Enter a password';
+                    if (val.trim().length < 6) return 'At least 6 characters';
+                    return null;
+                  },
+                ),
+                const SizedBox(height: 12),
+                TextFormField(
+                  controller: confirmController,
+                  obscureText: !showPassword,
+                  decoration: InputDecoration(
+                    labelText: 'Confirm Password',
+                    border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                  ),
+                  validator: (val) {
+                    if (val != passwordController.text) return 'Passwords do not match';
+                    return null;
+                  },
+                ),
+              ],
+            ),
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () {
+                if (formKey.currentState?.validate() == true) {
+                  Navigator.pop(context, passwordController.text.trim());
+                }
+              },
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF2ECC71),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              ),
+              child: const Text('Reset'),
+            ),
+          ],
+        ),
+      ),
+    );
+
+    if (newPassword == null || newPassword.isEmpty) return;
+    final hashed = sha256.convert(utf8.encode(newPassword)).toString();
     await DatabaseHelper().updatePassword(id, hashed);
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Password reset to password123')),
+      SnackBar(content: Text('Password for $id has been reset. Share the new password with them securely.')),
+    );
+  }
+
+  Future<void> _editUserName(String id, String currentName) async {
+    final nameController = TextEditingController(text: currentName);
+    final formKey = GlobalKey<FormState>();
+
+    final newName = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+        title: Text('Edit Name — $id'),
+        content: Form(
+          key: formKey,
+          child: TextFormField(
+            controller: nameController,
+            decoration: InputDecoration(
+              labelText: 'Full Name',
+              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            validator: (val) {
+              if (val == null || val.trim().isEmpty) return 'Enter a name';
+              return null;
+            },
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(dialogContext),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () {
+              if (formKey.currentState?.validate() == true) {
+                Navigator.pop(dialogContext, nameController.text.trim());
+              }
+            },
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4B1EFF),
+              foregroundColor: Colors.white,
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+            ),
+            child: const Text('Update'),
+          ),
+        ],
+      ),
+    );
+
+    if (newName == null || newName.isEmpty) return;
+    await DatabaseHelper().updateUserFullName(id, newName);
+    _loadUsers();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('Name for $id updated to "$newName".')),
     );
   }
 
@@ -287,13 +429,12 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
               onTogglePassword: SessionManager.isAdministrator(user.role)
                   ? () => _togglePasswordVisibility(user.id)
                   : null,
+              onEditName: isCurrentUser
+                  ? null
+                  : () => _editUserName(user.id, user.fullName),
               onResetPassword: isCurrentUser
                   ? null
-                  : () => _confirmAction(
-                        "Confirm Password Reset",
-                        "Reset ${user.id}'s password to 'password123'?",
-                        () => _resetPassword(user.id),
-                      ),
+                  : () => _resetPassword(user.id),
               onDeleteUser: isCurrentUser
                   ? null
                   : () => _confirmAction(

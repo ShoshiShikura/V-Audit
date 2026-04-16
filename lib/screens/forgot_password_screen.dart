@@ -1,31 +1,6 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
-import 'package:crypto/crypto.dart';
-import 'dart:convert';
 import '../models/user.dart';
-
-class SuccessMessage extends StatelessWidget {
-  final VoidCallback onBack;
-  const SuccessMessage({super.key, required this.onBack});
-  @override
-  Widget build(BuildContext context) {
-    return Center(
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          const Icon(Icons.check_circle, color: Colors.green, size: 48),
-          const SizedBox(height: 16),
-          const Text('Your password has been reset.'),
-          const SizedBox(height: 16),
-          ElevatedButton(
-            onPressed: onBack,
-            child: const Text('Back to Login'),
-          ),
-        ],
-      ),
-    );
-  }
-}
 
 class ForgotPasswordScreen extends StatefulWidget {
   const ForgotPasswordScreen({super.key});
@@ -36,16 +11,19 @@ class ForgotPasswordScreen extends StatefulWidget {
 
 class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
   final TextEditingController _usernameController = TextEditingController();
-  final TextEditingController _codeController = TextEditingController();
-  final TextEditingController _newPasswordController = TextEditingController();
-  String? _sentCode;
-  String? _userId;
-  bool _codeSent = false;
-  bool _resetSuccess = false;
+  bool _userFound = false;
+  String? _foundUserName;
 
-  Future<void> _sendResetCode() async {
+  Future<void> _checkUser() async {
     final currentContext = context;
     final username = _usernameController.text.trim();
+    if (username.isEmpty) {
+      ScaffoldMessenger.of(currentContext).showSnackBar(
+        const SnackBar(content: Text('Please enter your username.')),
+      );
+      return;
+    }
+
     final db = DatabaseHelper();
     final users = await db.getUsers();
     User? user;
@@ -55,105 +33,226 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
         break;
       }
     }
+
+    if (!currentContext.mounted) return;
+
     if (user == null) {
-      if (!currentContext.mounted) return;
       ScaffoldMessenger.of(currentContext).showSnackBar(
         const SnackBar(content: Text('No user found with that username.')),
       );
       return;
     }
-    // Generate a simple 6-digit code (for demo, not secure)
-    _sentCode =
-        (100000 + (DateTime.now().millisecondsSinceEpoch % 900000)).toString();
-    _userId = user.id;
-    setState(() => _codeSent = true);
 
-    // Show the code directly since we can't send email
-    if (!currentContext.mounted) return;
-    ScaffoldMessenger.of(currentContext).showSnackBar(
-      SnackBar(
-        content: Text('Reset code: $_sentCode'),
-        duration: const Duration(seconds: 10),
-      ),
-    );
+    setState(() {
+      _userFound = true;
+      _foundUserName = user!.fullName.isNotEmpty ? user.fullName : user.id;
+    });
   }
 
-  Future<void> _resetPassword() async {
-    final currentContext = context;
-    if (_codeController.text.trim() != _sentCode) {
-      ScaffoldMessenger.of(currentContext).showSnackBar(
-        const SnackBar(content: Text('Invalid code.')),
-      );
-      return;
-    }
-    if (_userId == null) return;
-    final db = DatabaseHelper();
-    final newPassword = _newPasswordController.text.trim();
-    if (newPassword.length < 6) {
-      ScaffoldMessenger.of(currentContext).showSnackBar(
-        const SnackBar(
-            content: Text('Password must be at least 6 characters.')),
-      );
-      return;
-    }
-    final hashed = sha256.convert(utf8.encode(newPassword)).toString();
-    await db.updatePassword(_userId!, hashed);
-    setState(() => _resetSuccess = true);
-    if (!currentContext.mounted) return;
-    ScaffoldMessenger.of(currentContext).showSnackBar(
-      const SnackBar(content: Text('Password reset successful!')),
-    );
+  @override
+  void dispose() {
+    _usernameController.dispose();
+    super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(title: const Text('Forgot Password')),
-      body: Padding(
-        padding: const EdgeInsets.all(24),
-        child: _resetSuccess
-            ? SuccessMessage(onBack: () => Navigator.pop(context))
-            : Column(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  if (!_codeSent) ...[
-                    const SizedBox(height: 16),
-                    const Text('Enter your username to receive a reset code:'),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _usernameController,
-                      decoration: const InputDecoration(labelText: 'Username'),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _sendResetCode,
-                      child: const Text('Send Code'),
-                    ),
-                  ] else ...[
-                    const SizedBox(height: 16),
-                    const Text(
-                        'Enter the code shown above and your new password:'),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _codeController,
-                      decoration:
-                          const InputDecoration(labelText: 'Reset Code'),
-                    ),
-                    const SizedBox(height: 16),
-                    TextField(
-                      controller: _newPasswordController,
-                      obscureText: true,
-                      decoration:
-                          const InputDecoration(labelText: 'New Password'),
-                    ),
-                    const SizedBox(height: 16),
-                    ElevatedButton(
-                      onPressed: _resetPassword,
-                      child: const Text('Reset Password'),
+      appBar: AppBar(
+        title: const Text('Forgot Password'),
+        backgroundColor: Colors.white,
+        foregroundColor: Colors.black,
+        elevation: 0.5,
+      ),
+      backgroundColor: const Color(0xFFF7F8FA),
+      body: Center(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24),
+          child: _userFound ? _buildContactAdmin() : _buildUsernameForm(),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildUsernameForm() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          const Icon(Icons.lock_outline, size: 48, color: Color(0xFF4B1EFF)),
+          const SizedBox(height: 16),
+          const Text(
+            'Forgot your password?',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            'Enter your username to proceed with the password reset.',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Colors.grey),
+          ),
+          const SizedBox(height: 24),
+          TextField(
+            controller: _usernameController,
+            decoration: InputDecoration(
+              labelText: 'Username',
+              prefixIcon: const Icon(Icons.person_outline),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
+            ),
+            onSubmitted: (_) => _checkUser(),
+          ),
+          const SizedBox(height: 20),
+          SizedBox(
+            width: double.infinity,
+            child: ElevatedButton(
+              onPressed: _checkUser,
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4B1EFF),
+                foregroundColor: Colors.white,
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
+              ),
+              child: const Text('Continue',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildContactAdmin() {
+    return Container(
+      padding: const EdgeInsets.all(24),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withValues(alpha: 0.05),
+            blurRadius: 12,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFF4B1EFF).withValues(alpha: 0.1),
+              shape: BoxShape.circle,
+            ),
+            child: const Icon(Icons.admin_panel_settings,
+                size: 48, color: Color(0xFF4B1EFF)),
+          ),
+          const SizedBox(height: 20),
+          const Text(
+            'Contact Your Administrator',
+            style: TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 12),
+          Container(
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF0F4FF),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Icon(Icons.person, size: 18, color: Color(0xFF4B1EFF)),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Account: $_foundUserName',
+                      style: const TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 15,
+                      ),
                     ),
                   ],
-                ],
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 16),
+          const Text(
+            'To reset your password, please contact your system administrator. '
+            'They can reset your password through the "Manage Users" section.\n\n'
+            'You can reach your administrator via:',
+            textAlign: TextAlign.center,
+            style: TextStyle(fontSize: 14, color: Colors.black87, height: 1.5),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              _contactChip(Icons.phone, 'Phone Call'),
+              const SizedBox(width: 12),
+              _contactChip(Icons.message, 'WhatsApp'),
+              const SizedBox(width: 12),
+              _contactChip(Icons.people, 'In Person'),
+            ],
+          ),
+          const SizedBox(height: 24),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton(
+              onPressed: () => Navigator.pop(context),
+              style: OutlinedButton.styleFrom(
+                foregroundColor: const Color(0xFF4B1EFF),
+                side: const BorderSide(color: Color(0xFF4B1EFF)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                padding: const EdgeInsets.symmetric(vertical: 14),
               ),
+              child: const Text('Back to Login',
+                  style: TextStyle(fontWeight: FontWeight.bold)),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _contactChip(IconData icon, String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      decoration: BoxDecoration(
+        color: const Color(0xFF4B1EFF).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(
+          color: const Color(0xFF4B1EFF).withValues(alpha: 0.15),
+        ),
+      ),
+      child: Column(
+        children: [
+          Icon(icon, size: 20, color: const Color(0xFF4B1EFF)),
+          const SizedBox(height: 4),
+          Text(
+            label,
+            style: const TextStyle(fontSize: 11, color: Color(0xFF4B1EFF)),
+          ),
+        ],
       ),
     );
   }
