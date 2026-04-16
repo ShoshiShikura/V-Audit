@@ -1,7 +1,7 @@
 import 'dart:io';
+import 'dart:ui' as ui;
 import 'package:flutter/material.dart';
 import 'package:geolocator/geolocator.dart';
-import 'package:image/image.dart' as img;
 import 'package:image_picker/image_picker.dart';
 import 'package:path/path.dart' as p;
 import '../models/team.dart';
@@ -122,83 +122,170 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
     required double altitude,
   }) async {
     final bytes = await originalFile.readAsBytes();
-    var decoded = img.decodeImage(bytes);
-    if (decoded == null) {
-      throw Exception('Unsupported image format.');
-    }
 
-    // Scale up tiny images (e.g. emulator virtual camera) so the stamp is visible.
-    const int minStampWidth = 800;
-    if (decoded.width < minStampWidth) {
-      final scale = minStampWidth / decoded.width;
-      decoded = img.copyResize(
-        decoded,
-        width: minStampWidth,
-        height: (decoded.height * scale).round(),
-        interpolation: img.Interpolation.cubic,
-      );
-    }
+    // Decode using dart:ui for full Canvas rendering
+    final codec = await ui.instantiateImageCodec(bytes);
+    final frame = await codec.getNextFrame();
+    final photo = frame.image;
 
-    // Stamp block (bottom-left)
-    final stampLines = <String>[
-      'Captured: ${_formatCapturedAt(capturedAtLocal.toUtc().toIso8601String())}',
-      'Coordinate: ${latitude.toStringAsFixed(6)}, ${longitude.toStringAsFixed(6)}',
-      'Altitude: ${altitude.toStringAsFixed(1)} m',
+    final w = photo.width.toDouble();
+    final h = photo.height.toDouble();
+
+    // --- Font sizes proportional to image width ---
+    final timeFontSize = (w * 0.12).clamp(36.0, 200.0);
+    final ampmFontSize = (w * 0.05).clamp(16.0, 80.0);
+    final dateFontSize = (w * 0.045).clamp(14.0, 72.0);
+    final infoFontSize = (w * 0.04).clamp(12.0, 64.0);
+    final pad = (w * 0.04).clamp(12.0, 48.0);
+
+    // --- Format date/time strings ---
+    final hour12 = capturedAtLocal.hour == 0
+        ? 12
+        : (capturedAtLocal.hour > 12
+            ? capturedAtLocal.hour - 12
+            : capturedAtLocal.hour);
+    final ampm = capturedAtLocal.hour >= 12 ? 'PM' : 'AM';
+    final timeStr =
+        '${hour12.toString().padLeft(2, '0')}:${capturedAtLocal.minute.toString().padLeft(2, '0')}';
+    final months = [
+      'Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun',
+      'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'
     ];
+    final days = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
+    final dateStr =
+        '${months[capturedAtLocal.month - 1]} ${capturedAtLocal.day}, ${capturedAtLocal.year}';
+    final dayStr = days[capturedAtLocal.weekday - 1];
 
-    // Use arial14 for smaller images, arial24 for normal+
-    final font = decoded.width < 600 ? img.arial14 : img.arial24;
-    final pad = ((decoded.width * 0.02).round()).clamp(8, 24);
-    final lineGap = 6;
-    final lineHeight = (font.lineHeight + lineGap).round();
-    final blockH = (pad * 2) + (stampLines.length * lineHeight) - lineGap;
+    final latDir = latitude >= 0 ? 'N' : 'S';
+    final lngDir = longitude >= 0 ? 'E' : 'W';
+    final coordStr =
+        'Coordinate: ${latitude.abs().toStringAsFixed(6)}°$latDir, ${longitude.abs().toStringAsFixed(6)}°$lngDir';
+    final altStr = 'Altitude: ${altitude.toStringAsFixed(1)} m';
 
-    // Estimate width; keep it reasonable on small images.
-    final maxChars =
-        stampLines.fold<int>(0, (m, s) => s.length > m ? s.length : m);
-    final approxCharW = (font.lineHeight * 0.55).round();
-    int blockW = (pad * 2) + (maxChars * approxCharW);
-    final minW = (decoded.width * 0.55).round();
-    final maxW = (decoded.width * 0.95).round();
-    if (blockW < minW) blockW = minW;
-    if (blockW > maxW) blockW = maxW;
-
-    final x = pad;
-    // Clamp y to 0 so the stamp is always visible even on very small images
-    final y = (decoded.height - blockH - pad).clamp(0, decoded.height - 1);
-
-    img.fillRect(
-      decoded,
-      x1: x,
-      y1: y,
-      x2: (x + blockW).clamp(0, decoded.width),
-      y2: (y + blockH).clamp(0, decoded.height),
-      color: img.ColorRgba8(0, 0, 0, 150),
+    // --- Measure text to compute stamp height ---
+    final timePainter = _buildTextPainter(
+      timeStr, timeFontSize, FontWeight.w900, Colors.white, w * 0.5,
+    );
+    final ampmPainter = _buildTextPainter(
+      ampm, ampmFontSize, FontWeight.w700, Colors.white, w * 0.2,
+    );
+    final datePainter = _buildTextPainter(
+      '$dateStr  |  $dayStr', dateFontSize, FontWeight.w600, Colors.white, w * 0.8,
+    );
+    final coordPainter = _buildTextPainter(
+      coordStr, infoFontSize, FontWeight.w600, Colors.white, w - pad * 2,
+    );
+    final altPainter = _buildTextPainter(
+      altStr, infoFontSize, FontWeight.w600, Colors.white, w - pad * 2,
     );
 
-    int textY = y + pad;
-    for (final line in stampLines) {
-      img.drawString(
-        decoded,
-        line,
-        font: font,
-        x: x + pad,
-        y: textY,
-        color: img.ColorRgba8(255, 255, 255, 255),
-      );
-      textY += lineHeight;
-    }
+    final lineSpacing = pad * 0.5;
+    final stampH = pad +
+        timePainter.height +
+        lineSpacing +
+        datePainter.height +
+        lineSpacing * 1.5 +
+        coordPainter.height +
+        lineSpacing +
+        altPainter.height +
+        pad;
+    final stampY = h - stampH;
 
+    // --- Create canvas ---
+    final recorder = ui.PictureRecorder();
+    final canvas = Canvas(recorder, Rect.fromLTWH(0, 0, w, h));
+
+    // Draw original photo
+    canvas.drawImage(photo, Offset.zero, Paint());
+
+    // Draw semi-transparent dark overlay
+    canvas.drawRect(
+      Rect.fromLTWH(0, stampY, w, stampH),
+      Paint()..color = const Color.fromRGBO(0, 0, 0, 0.55),
+    );
+
+    // --- Draw text ---
+    double curY = stampY + pad;
+
+    // Time (large bold)
+    timePainter.paint(canvas, Offset(pad, curY));
+    // AM/PM next to time
+    ampmPainter.paint(
+      canvas,
+      Offset(pad + timePainter.width + pad * 0.3, curY + timePainter.height - ampmPainter.height),
+    );
+    curY += timePainter.height + lineSpacing;
+
+    // Date + Day
+    datePainter.paint(canvas, Offset(pad, curY));
+    curY += datePainter.height + lineSpacing * 1.5;
+
+    // Thin separator line
+    canvas.drawLine(
+      Offset(pad, curY),
+      Offset(w * 0.6, curY),
+      Paint()
+        ..color = Colors.white.withValues(alpha: 0.4)
+        ..strokeWidth = 1.5,
+    );
+    curY += lineSpacing;
+
+    // Coordinate
+    coordPainter.paint(canvas, Offset(pad, curY));
+    curY += coordPainter.height + lineSpacing;
+
+    // Altitude
+    altPainter.paint(canvas, Offset(pad, curY));
+
+    // --- Convert to image bytes ---
+    final picture = recorder.endRecording();
+    final resultImage = await picture.toImage(w.toInt(), h.toInt());
+    final pngData = await resultImage.toByteData(format: ui.ImageByteFormat.png);
+
+    photo.dispose();
+    resultImage.dispose();
+
+    if (pngData == null) throw Exception('Failed to render stamped image.');
+
+    // Save
     final appDir = await getApplicationDocumentsDirectory();
     final outDir = Directory(p.join(appDir.path, 'audit_images'));
     if (!await outDir.exists()) {
       await outDir.create(recursive: true);
     }
     final ts = DateTime.now().millisecondsSinceEpoch;
-    final outPath = p.join(outDir.path, 'company_${teamId}_${ts}_stamped.jpg');
-    final jpgBytes = img.encodeJpg(decoded, quality: 90);
-    await File(outPath).writeAsBytes(jpgBytes, flush: true);
+    final outPath = p.join(outDir.path, 'company_${teamId}_${ts}_stamped.png');
+    await File(outPath).writeAsBytes(
+      pngData.buffer.asUint8List(),
+      flush: true,
+    );
     return outPath;
+  }
+
+  /// Helper to create a TextPainter for Canvas rendering.
+  TextPainter _buildTextPainter(
+    String text,
+    double fontSize,
+    FontWeight weight,
+    Color color,
+    double maxWidth,
+  ) {
+    final tp = TextPainter(
+      text: TextSpan(
+        text: text,
+        style: TextStyle(
+          fontSize: fontSize,
+          fontWeight: weight,
+          color: color,
+          height: 1.2,
+        ),
+      ),
+      textDirection: TextDirection.ltr,
+      maxLines: 2,
+      ellipsis: '...',
+    );
+    tp.layout(maxWidth: maxWidth);
+    return tp;
   }
 
   @override
