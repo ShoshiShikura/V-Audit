@@ -496,6 +496,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
                     final capturedAtLocal = DateTime.now();
 
                     String stampedPath;
+                    bool stampSucceeded = false;
                     try {
                       stampedPath = await _createStampedImage(
                         originalFile: file,
@@ -505,8 +506,14 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
                         longitude: pos.longitude,
                         altitude: pos.altitude,
                       );
+                      stampSucceeded = true;
+                      debugPrint(
+                        '[STAMP OK] lat=${pos.latitude}, lng=${pos.longitude}, '
+                        'alt=${pos.altitude}, path=$stampedPath',
+                      );
                     } catch (e) {
                       stampedPath = picked.path; // fallback (unstamped)
+                      debugPrint('[STAMP FAIL] $e');
                       if (!mounted) return;
                       ScaffoldMessenger.of(this.context).showSnackBar(
                         SnackBar(
@@ -526,6 +533,19 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
                       _altitude = pos.altitude;
                     });
                     _autoSave();
+
+                    if (stampSucceeded && mounted) {
+                      ScaffoldMessenger.of(this.context).showSnackBar(
+                        SnackBar(
+                          content: Text(
+                            '📍 Photo stamped — GPS: ${pos.latitude.toStringAsFixed(4)}, '
+                            '${pos.longitude.toStringAsFixed(4)}',
+                          ),
+                          duration: const Duration(seconds: 3),
+                          backgroundColor: Colors.green.shade700,
+                        ),
+                      );
+                    }
                   }
                 },
               ),
