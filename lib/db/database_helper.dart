@@ -1139,6 +1139,51 @@ class DatabaseHelper {
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
   }
+  
+  // ── Sync Export Operations ────────────────────────────────────────────────
+  
+  /// Gathers all documents, templates, findings, summaries, and evidence metadata for XAMPP synchronization.
+  Future<Map<String, dynamic>> getAllDataForSync() async {
+    final db = await database;
+    final data = <String, dynamic>{};
+    
+    // 1. Documents
+    final docs = await db.query('documents');
+    data['documents'] = docs;
+    
+    // 2. Audit Templates
+    final templates = await db.query('audit_templates');
+    data['audit_templates'] = templates;
+    
+    // 3. Finding Summary
+    final findings = await db.query('finding_summary');
+    data['finding_summary'] = findings;
+    
+    // 4. Summary Team
+    final sumTeams = await db.query('summary_team');
+    data['summary_team'] = sumTeams;
+    
+    // 5. Company Name (Evidence)
+    final evidence = await db.query('company_name');
+    data['company_name'] = evidence;
+
+    return data;
+  }
+  
+  /// Gets evidence attachment paths that might need offline sync
+  Future<List<Map<String, dynamic>>> getUnsyncedEvidence() async {
+    final db = await database;
+    // Basic logic: if attachmentPath exists but does NOT start with 'uploads/' it means it is a local device path.
+    return await db.rawQuery(
+      "SELECT teamId, attachmentPath FROM company_name WHERE attachmentPath IS NOT NULL AND attachmentPath != '' AND attachmentPath NOT LIKE 'uploads/%'"
+    );
+  }
+  
+  /// Updates attachment path once evidence synced successfully
+  Future<void> updateEvidencePath(String teamId, String serverPath) async {
+    final db = await database;
+    await db.update('company_name', {'attachmentPath': serverPath}, where: 'teamId = ?', whereArgs: [teamId]);
+  }
 }
 
 Future<void> deleteDatabaseFile() async {

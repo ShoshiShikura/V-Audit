@@ -1,6 +1,8 @@
 import 'dart:convert';
+import 'dart:io';
 import 'package:http/http.dart' as http;
 import 'package:flutter/material.dart';
+import '../db/database_helper.dart';
 
 class OnlineAuthResult {
   final bool ok;
@@ -166,6 +168,70 @@ class BackendService {
       return users.cast<Map<String, dynamic>>();
     } catch (_) {
       return null;
+    }
+  }
+
+  // ── Synchronization to XAMPP ─────────────────────────────────────────
+
+  /// Pushes all offline documents, templates, and evidence metadata to XAMPP.
+  static Future<bool> syncAuditDataToXampp() async {
+    final url = Uri.parse('$_baseUrl/sync_audit.php');
+    try {
+      final data = await DatabaseHelper().getAllDataForSync();
+
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode(data),
+      ).timeout(const Duration(seconds: 15));
+
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      return decoded['ok'] == true;
+    } catch (e) {
+      debugPrint('Sync Audit Error: $e');
+      return false;
+    }
+  }
+
+  /// Finds newly captured evidence images and uploads them safely.
+  static Future<bool> syncEvidenceImagesToXampp() async {
+    final url = Uri.parse('$_baseUrl/upload_evidence.php');
+    try {
+      final unsynced = await DatabaseHelper().getUnsyncedEvidence();
+      bool allSuccessful = true;
+
+      for (var record in unsynced) {
+        String teamId = record['teamId'];
+        String attachPath = record['attachmentPath'];
+
+        final file = File(attachPath);
+        if (!await file.exists()) continue;
+
+        var request = http.MultipartRequest('POST', url);
+        request.files.add(
+          await http.MultipartFile.fromPath('evidence_image', file.path),
+        );
+
+        final response = await request.send().timeout(const Duration(seconds: 15));
+        
+        if (response.statusCode == 200) {
+          final resBody = await response.stream.bytesToString();
+          final decoded = jsonDecode(resBody);
+          if (decoded['ok'] == true) {
+            // Update local SQLite to point to new server path securely
+            await DatabaseHelper().updateEvidencePath(teamId, decoded['path']);
+          } else {
+            allSuccessful = false;
+          }
+        } else {
+          allSuccessful = false;
+        }
+      }
+      return allSuccessful;
+    } catch (e) {
+      debugPrint('Evidence Sync Error: $e');
+      return false;
     }
   }
 }

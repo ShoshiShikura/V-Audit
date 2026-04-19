@@ -1758,7 +1758,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        actions: [],
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.cloud_sync, color: Color(0xFF4B1EFF)),
+            tooltip: 'Sync Audit Data to XAMPP',
+            onPressed: () async {
+              ScaffoldMessenger.of(context).showSnackBar(
+                const SnackBar(content: Text('Starting synchronization...')),
+              );
+              
+              bool okImages = await BackendService.syncEvidenceImagesToXampp();
+              bool okData = await BackendService.syncAuditDataToXampp();
+
+              if (!context.mounted) return;
+              
+              if (okImages && okData) {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Synchronization to XAMPP successful!'),
+                    backgroundColor: Colors.green,
+                  ),
+                );
+              } else {
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(
+                    content: Text('Synchronization encountered errors. Make sure XAMPP is running.'),
+                    backgroundColor: Colors.red,
+                  ),
+                );
+              }
+            },
+          ),
+        ],
       ),
       backgroundColor: const Color(0xFFF7F8FA),
       body: Padding(
