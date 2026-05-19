@@ -48,25 +48,78 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
     final confirmed = await showDialog<bool>(
       context: currentContext,
-      builder: (context) => AlertDialog(
-        title: const Text('Rotate Encryption Keys'),
-        content: const Text(
-            'This will generate new encryption keys. All existing data will be re-encrypted. '
-            'This process may take a few moments. Continue?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Rotate Encryption Keys',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'This will generate new encryption keys. All existing data will be re-encrypted. '
+                      'This process may take a few moments. Continue?',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.orange,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        child: const Text('Rotate Keys'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.orange,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Rotate Keys'),
-          ),
-        ],
+        ),
       ),
     );
 
@@ -108,28 +161,82 @@ class _SecuritySettingsScreenState extends State<SecuritySettingsScreen> {
 
     final confirmed = await showDialog<bool>(
       context: currentContext,
-      builder: (context) => AlertDialog(
-        title: const Text('Clear All Data'),
-        content: const Text('This will permanently delete ALL data including:\n'
-            '• All audit documents\n'
-            '• All user accounts\n'
-            '• All team data\n'
-            '• All encryption keys\n\n'
-            'This action cannot be undone. Are you sure?'),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
+      builder: (dialogContext) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
+        ),
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Clear All Data',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    const Text(
+                      'This will permanently delete ALL data including:\n'
+                      '• All audit documents\n'
+                      '• All user accounts\n'
+                      '• All team data\n'
+                      '• All encryption keys\n\n'
+                      'This action cannot be undone. Are you sure?',
+                      style: TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(dialogContext, false),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(dialogContext, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        child: const Text('Clear All Data'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-            ),
-            child: const Text('Clear All Data'),
-          ),
-        ],
+        ),
       ),
     );
 

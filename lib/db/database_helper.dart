@@ -63,7 +63,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 11,
+        version: 12,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -324,6 +324,7 @@ class DatabaseHelper {
         name TEXT,
         description TEXT DEFAULT '',
         isPublished INTEGER DEFAULT 0,
+        isActive INTEGER DEFAULT 0,
         createdDate TEXT,
         lastModified TEXT
       )
@@ -333,11 +334,25 @@ class DatabaseHelper {
       CREATE TABLE template_items (
         id TEXT PRIMARY KEY,
         templateId TEXT,
+        section TEXT DEFAULT 'profiling_team',
         category TEXT,
         label TEXT,
         itemType TEXT,
         isMandatory INTEGER DEFAULT 0,
-        sortOrder INTEGER DEFAULT 0
+        sortOrder INTEGER DEFAULT 0,
+        isDefault INTEGER DEFAULT 0,
+        defaultKey TEXT DEFAULT ''
+      )
+    ''');
+
+    await db.execute('''
+      CREATE TABLE custom_field_data (
+        id TEXT PRIMARY KEY,
+        documentId TEXT,
+        teamId TEXT,
+        personIndex INTEGER,
+        templateItemId TEXT,
+        value TEXT
       )
     ''');
 
@@ -625,6 +640,7 @@ class DatabaseHelper {
           name TEXT,
           description TEXT DEFAULT '',
           isPublished INTEGER DEFAULT 0,
+          isActive INTEGER DEFAULT 0,
           createdDate TEXT,
           lastModified TEXT
         )
@@ -634,11 +650,14 @@ class DatabaseHelper {
         CREATE TABLE IF NOT EXISTS template_items (
           id TEXT PRIMARY KEY,
           templateId TEXT,
+          section TEXT DEFAULT 'profiling_team',
           category TEXT,
           label TEXT,
           itemType TEXT,
           isMandatory INTEGER DEFAULT 0,
-          sortOrder INTEGER DEFAULT 0
+          sortOrder INTEGER DEFAULT 0,
+          isDefault INTEGER DEFAULT 0,
+          defaultKey TEXT DEFAULT ''
         )
       ''');
 
@@ -646,6 +665,101 @@ class DatabaseHelper {
       final existing = await db.query('audit_templates', limit: 1);
       if (existing.isEmpty) {
         await _seedDefaultTemplate(db);
+      }
+    }
+
+    if (oldVersion < 12) {
+      // Add new columns to audit_templates
+      try {
+        await db.execute("ALTER TABLE audit_templates ADD COLUMN isActive INTEGER DEFAULT 0;");
+      } catch (e) {
+        // Column might already exist
+      }
+
+      // Add new columns to template_items
+      try {
+        await db.execute("ALTER TABLE template_items ADD COLUMN section TEXT DEFAULT 'profiling_team';");
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute("ALTER TABLE template_items ADD COLUMN isDefault INTEGER DEFAULT 0;");
+      } catch (e) {
+        // Column might already exist
+      }
+      try {
+        await db.execute("ALTER TABLE template_items ADD COLUMN defaultKey TEXT DEFAULT '';");
+      } catch (e) {
+        // Column might already exist
+      }
+
+      // Add templateId to documents
+      try {
+        await db.execute("ALTER TABLE documents ADD COLUMN templateId TEXT DEFAULT 'default_vmm_template';");
+      } catch (e) {
+        // Column might already exist
+      }
+
+      // Create custom_field_data table
+      await db.execute('''
+        CREATE TABLE IF NOT EXISTS custom_field_data (
+          id TEXT PRIMARY KEY,
+          documentId TEXT,
+          teamId TEXT,
+          personIndex INTEGER,
+          templateItemId TEXT,
+          value TEXT
+        )
+      ''');
+
+      // Update the default template: set isActive=1 and update items with section/isDefault/defaultKey
+      await db.update('audit_templates', {'isActive': 1},
+          where: 'id = ?', whereArgs: ['default_vmm_template']);
+
+      // Update existing default template items with section, isDefault, and defaultKey
+      final defaultKeyMap = {
+        'default_vmm_template_item_0': {'section': 'profiling_team', 'defaultKey': 'worker_name'},
+        'default_vmm_template_item_1': {'section': 'profiling_team', 'defaultKey': 'ic_passport'},
+        'default_vmm_template_item_2': {'section': 'profiling_team', 'defaultKey': 'attendance'},
+        'default_vmm_template_item_3': {'section': 'profiling_team', 'defaultKey': 'ntsmp_expiry'},
+        'default_vmm_template_item_4': {'section': 'profiling_team', 'defaultKey': 'aesp_expiry'},
+        'default_vmm_template_item_5': {'section': 'profiling_team', 'defaultKey': 'agtes_expiry'},
+        'default_vmm_template_item_6': {'section': 'profiling_team', 'defaultKey': 'ca2a_expiry'},
+        'default_vmm_template_item_7': {'section': 'profiling_team', 'defaultKey': 'ca2c_expiry'},
+        'default_vmm_template_item_8': {'section': 'profiling_team', 'defaultKey': 'pole_proficiency'},
+      };
+      for (final entry in defaultKeyMap.entries) {
+        await db.update('template_items', {
+          'section': entry.value['section'],
+          'isDefault': 1,
+          'defaultKey': entry.value['defaultKey'],
+        }, where: 'id = ?', whereArgs: [entry.key]);
+      }
+
+      // Add missing default items for summary_team, company_name, finding_summary sections
+      final missingDefaults = <Map<String, dynamic>>[
+        {'defaultKey': 'type_of_team', 'section': 'summary_team', 'category': 'Summary', 'label': 'Type of Team', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 0},
+        {'defaultKey': 'ppe', 'section': 'summary_team', 'category': 'Summary', 'label': 'PPE', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 1},
+        {'defaultKey': 'competency', 'section': 'summary_team', 'category': 'Summary', 'label': 'Competency', 'itemType': 'boolean', 'isMandatory': 1, 'sortOrder': 2},
+        {'defaultKey': 'member_selection', 'section': 'company_name', 'category': 'Team', 'label': 'Member Selection', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 0},
+        {'defaultKey': 'attachment', 'section': 'company_name', 'category': 'Evidence', 'label': 'Attachment (Photo)', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 1},
+        {'defaultKey': 'company_remark', 'section': 'company_name', 'category': 'Notes', 'label': 'Remark', 'itemType': 'text', 'isMandatory': 0, 'sortOrder': 2},
+        {'defaultKey': 'finding_remark', 'section': 'finding_summary', 'category': 'Notes', 'label': 'Remark', 'itemType': 'text', 'isMandatory': 0, 'sortOrder': 0},
+      ];
+      for (int i = 0; i < missingDefaults.length; i++) {
+        final item = missingDefaults[i];
+        await db.insert('template_items', {
+          'id': 'default_vmm_template_item_${9 + i}',
+          'templateId': 'default_vmm_template',
+          'section': item['section'],
+          'category': item['category'],
+          'label': item['label'],
+          'itemType': item['itemType'],
+          'isMandatory': item['isMandatory'],
+          'sortOrder': item['sortOrder'],
+          'isDefault': 1,
+          'defaultKey': item['defaultKey'],
+        }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     }
   }
@@ -1104,7 +1218,7 @@ class DatabaseHelper {
     return result.first['cnt'] as int? ?? 0;
   }
 
-  /// Seeds the default VMM audit template.
+  /// Seeds the default VMM audit template with all sections.
   static Future<void> _seedDefaultTemplate(Database db) async {
     final now = DateTime.now().toIso8601String();
     const templateId = 'default_vmm_template';
@@ -1114,30 +1228,156 @@ class DatabaseHelper {
       'name': 'VMM Standard Audit',
       'description': 'Default VMM audit checklist for telecommunications vendor material management.',
       'isPublished': 1,
+      'isActive': 1,
       'createdDate': now,
       'lastModified': now,
     }, conflictAlgorithm: ConflictAlgorithm.ignore);
 
-    final defaultItems = <Map<String, dynamic>>[
-      {'category': 'Identity', 'label': 'Worker Name', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 0},
-      {'category': 'Identity', 'label': 'IC / Passport Number', 'itemType': 'text', 'isMandatory': 1, 'sortOrder': 1},
-      {'category': 'Attendance', 'label': 'Attendance', 'itemType': 'boolean', 'isMandatory': 1, 'sortOrder': 2},
-      {'category': 'Certification', 'label': 'NTSMP Expiry', 'itemType': 'date_expiry', 'isMandatory': 1, 'sortOrder': 3},
-      {'category': 'Certification', 'label': 'AESP Expiry', 'itemType': 'date_expiry', 'isMandatory': 1, 'sortOrder': 4},
-      {'category': 'Certification', 'label': 'AGTES Expiry', 'itemType': 'date_expiry', 'isMandatory': 1, 'sortOrder': 5},
-      {'category': 'Certification', 'label': 'CA2A Expiry', 'itemType': 'date_expiry', 'isMandatory': 0, 'sortOrder': 6},
-      {'category': 'Certification', 'label': 'CA2C Expiry', 'itemType': 'date_expiry', 'isMandatory': 0, 'sortOrder': 7},
-      {'category': 'Competency', 'label': 'Pole Proficiency', 'itemType': 'boolean', 'isMandatory': 1, 'sortOrder': 8},
-    ];
-
+    final defaultItems = DefaultTemplateItems.all;
     for (int i = 0; i < defaultItems.length; i++) {
       final item = defaultItems[i];
       await db.insert('template_items', {
         'id': '${templateId}_item_$i',
         'templateId': templateId,
-        ...item,
+        'section': item['section'],
+        'category': item['category'],
+        'label': item['label'],
+        'itemType': item['itemType'],
+        'isMandatory': item['isMandatory'],
+        'sortOrder': item['sortOrder'],
+        'isDefault': 1,
+        'defaultKey': item['defaultKey'],
       }, conflictAlgorithm: ConflictAlgorithm.ignore);
     }
+  }
+
+  // ── Active Template Management ──────────────────────────────────────────
+
+  /// Sets a template as the active one. Only one can be active at a time.
+  Future<void> setActiveTemplate(String templateId) async {
+    final db = await database;
+    await db.transaction((txn) async {
+      // Clear all active flags
+      await txn.update('audit_templates', {'isActive': 0});
+      // Set the chosen one as active
+      await txn.update('audit_templates', {'isActive': 1},
+          where: 'id = ?', whereArgs: [templateId]);
+    });
+  }
+
+  /// Returns the currently active template, or null if none set.
+  Future<AuditTemplate?> getActiveTemplate() async {
+    final db = await database;
+    final result = await db.query('audit_templates',
+        where: 'isActive = 1', limit: 1);
+    if (result.isNotEmpty) return AuditTemplate.fromMap(result.first);
+    return null;
+  }
+
+  /// Returns template items filtered by section.
+  Future<List<TemplateItem>> getTemplateItemsBySection(
+      String templateId, String section) async {
+    final db = await database;
+    final maps = await db.query(
+      'template_items',
+      where: 'templateId = ? AND section = ?',
+      whereArgs: [templateId, section],
+      orderBy: 'sortOrder ASC',
+    );
+    return maps.map((m) => TemplateItem.fromMap(m)).toList();
+  }
+
+  // ── Custom Field Data CRUD ──────────────────────────────────────────────
+
+  /// Saves a custom field value. Upserts by (documentId, teamId, personIndex, templateItemId).
+  Future<void> saveCustomFieldData({
+    required String documentId,
+    String? teamId,
+    int? personIndex,
+    required String templateItemId,
+    required String value,
+  }) async {
+    final db = await database;
+    final existing = await db.query('custom_field_data',
+        where: 'documentId = ? AND teamId = ? AND personIndex = ? AND templateItemId = ?',
+        whereArgs: [documentId, teamId, personIndex, templateItemId],
+        limit: 1);
+
+    if (existing.isEmpty) {
+      final id = 'cfd_${DateTime.now().millisecondsSinceEpoch}_${templateItemId.hashCode}';
+      await db.insert('custom_field_data', {
+        'id': id,
+        'documentId': documentId,
+        'teamId': teamId,
+        'personIndex': personIndex,
+        'templateItemId': templateItemId,
+        'value': value,
+      });
+    } else {
+      await db.update('custom_field_data', {'value': value},
+          where: 'id = ?', whereArgs: [existing.first['id']]);
+    }
+  }
+
+  /// Gets a specific custom field value.
+  Future<String?> getCustomFieldData({
+    required String documentId,
+    String? teamId,
+    int? personIndex,
+    required String templateItemId,
+  }) async {
+    final db = await database;
+    final result = await db.query('custom_field_data',
+        where: 'documentId = ? AND teamId = ? AND personIndex = ? AND templateItemId = ?',
+        whereArgs: [documentId, teamId, personIndex, templateItemId],
+        limit: 1);
+    if (result.isNotEmpty) return result.first['value'] as String?;
+    return null;
+  }
+
+  /// Gets all custom field values for a team member.
+  Future<Map<String, String>> getCustomFieldDataForPerson({
+    required String documentId,
+    required String teamId,
+    required int personIndex,
+  }) async {
+    final db = await database;
+    final result = await db.query('custom_field_data',
+        where: 'documentId = ? AND teamId = ? AND personIndex = ?',
+        whereArgs: [documentId, teamId, personIndex]);
+    return {
+      for (final row in result)
+        row['templateItemId'] as String: row['value'] as String? ?? '',
+    };
+  }
+
+  /// Gets all custom field values for a team (team-level, not per-person).
+  Future<Map<String, String>> getCustomFieldDataForTeam({
+    required String documentId,
+    required String teamId,
+  }) async {
+    final db = await database;
+    final result = await db.query('custom_field_data',
+        where: 'documentId = ? AND teamId = ? AND personIndex IS NULL',
+        whereArgs: [documentId, teamId]);
+    return {
+      for (final row in result)
+        row['templateItemId'] as String: row['value'] as String? ?? '',
+    };
+  }
+
+  /// Gets all custom field values for a document (document-level, not per-team).
+  Future<Map<String, String>> getCustomFieldDataForDocument({
+    required String documentId,
+  }) async {
+    final db = await database;
+    final result = await db.query('custom_field_data',
+        where: 'documentId = ? AND teamId IS NULL AND personIndex IS NULL',
+        whereArgs: [documentId]);
+    return {
+      for (final row in result)
+        row['templateItemId'] as String: row['value'] as String? ?? '',
+    };
   }
   
   // ── Sync Export Operations ────────────────────────────────────────────────

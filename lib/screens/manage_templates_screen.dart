@@ -72,33 +72,107 @@ class _ManageTemplatesScreenState extends State<ManageTemplatesScreen> {
     if (result == true) _loadTemplates();
   }
 
+  Future<void> _setActiveTemplate(AuditTemplate template) async {
+    if (!template.isPublished) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Only published templates can be set as active.')),
+      );
+      return;
+    }
+    await DatabaseHelper().setActiveTemplate(template.id);
+    await _loadTemplates();
+    if (!mounted) return;
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(content: Text('"${template.name}" is now the active template.')),
+    );
+  }
+
   Future<void> _deleteTemplate(AuditTemplate template) async {
     final currentContext = context;
+
+    // Prevent deleting the active template
+    if (template.isActive) {
+      ScaffoldMessenger.of(currentContext).showSnackBar(
+        const SnackBar(
+          content: Text('Cannot delete the active template. Set another template as active first.'),
+        ),
+      );
+      return;
+    }
+
     final confirmed = await showDialog<bool>(
       context: currentContext,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-        title: const Text('Delete Template'),
-        content: Text(
-          'Are you sure you want to delete "${template.name}"?\n\nThis action cannot be undone.',
+      builder: (context) => Dialog(
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(24),
         ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context, false),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () => Navigator.pop(context, true),
-            style: ElevatedButton.styleFrom(
-              backgroundColor: Colors.red,
-              foregroundColor: Colors.white,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
+        backgroundColor: Colors.white,
+        child: ConstrainedBox(
+          constraints: const BoxConstraints(maxWidth: 400),
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 24,
+                  vertical: 24,
+                ),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    const Text(
+                      'Delete Template',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        fontSize: 22,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Are you sure you want to delete "${template.name}"?\n\nThis action cannot be undone.',
+                      style: const TextStyle(
+                        fontSize: 16,
+                        color: Colors.black87,
+                      ),
+                    ),
+                  ],
+                ),
               ),
-            ),
-            child: const Text('Delete'),
+              Container(
+                padding: const EdgeInsets.fromLTRB(24, 0, 24, 24),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: TextButton(
+                        onPressed: () => Navigator.pop(context, false),
+                        child: const Text('Cancel'),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: ElevatedButton(
+                        onPressed: () => Navigator.pop(context, true),
+                        style: ElevatedButton.styleFrom(
+                          backgroundColor: Colors.red,
+                          foregroundColor: Colors.white,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(12),
+                          ),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                          textStyle: const TextStyle(
+                            fontWeight: FontWeight.bold,
+                          ),
+                        ),
+                        child: const Text('Delete'),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ),
-        ],
+        ),
       ),
     );
     if (confirmed == true) {
@@ -177,6 +251,7 @@ class _ManageTemplatesScreenState extends State<ManageTemplatesScreen> {
                           itemCount: itemCount,
                           onTap: () => _editTemplate(template),
                           onDelete: () => _deleteTemplate(template),
+                          onSetActive: () => _setActiveTemplate(template),
                         );
                       },
                     ),
@@ -190,12 +265,14 @@ class _TemplateCard extends StatelessWidget {
   final int itemCount;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final VoidCallback onSetActive;
 
   const _TemplateCard({
     required this.template,
     required this.itemCount,
     required this.onTap,
     required this.onDelete,
+    required this.onSetActive,
   });
 
   @override
@@ -227,25 +304,57 @@ class _TemplateCard extends StatelessWidget {
                 Container(
                   padding: const EdgeInsets.all(10),
                   decoration: BoxDecoration(
-                    color: const Color(0xFF4B1EFF).withValues(alpha: 0.1),
+                    color: template.isActive
+                        ? Colors.green.withValues(alpha: 0.1)
+                        : const Color(0xFF4B1EFF).withValues(alpha: 0.1),
                     borderRadius: BorderRadius.circular(12),
                   ),
-                  child: const Icon(Icons.article,
-                      color: Color(0xFF4B1EFF), size: 24),
+                  child: Icon(
+                    template.isActive ? Icons.check_circle : Icons.article,
+                    color: template.isActive ? Colors.green : const Color(0xFF4B1EFF),
+                    size: 24,
+                  ),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        template.name,
-                        style: const TextStyle(
-                          fontWeight: FontWeight.w600,
-                          fontSize: 16,
-                          color: Colors.black87,
-                        ),
-                        overflow: TextOverflow.ellipsis,
+                      Row(
+                        children: [
+                          Flexible(
+                            child: Text(
+                              template.name,
+                              style: const TextStyle(
+                                fontWeight: FontWeight.w600,
+                                fontSize: 16,
+                                color: Colors.black87,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                          if (template.isActive) ...[
+                            const SizedBox(width: 8),
+                            Container(
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 8, vertical: 2),
+                              decoration: BoxDecoration(
+                                color: Colors.green.withValues(alpha: 0.15),
+                                borderRadius: BorderRadius.circular(8),
+                                border: Border.all(
+                                    color: Colors.green.withValues(alpha: 0.4)),
+                              ),
+                              child: const Text(
+                                'Active',
+                                style: TextStyle(
+                                  fontSize: 11,
+                                  fontWeight: FontWeight.bold,
+                                  color: Colors.green,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ],
                       ),
                       if (template.description.isNotEmpty)
                         Text(
@@ -260,6 +369,13 @@ class _TemplateCard extends StatelessWidget {
                     ],
                   ),
                 ),
+                if (!template.isActive)
+                  IconButton(
+                    icon: const Icon(Icons.star_border,
+                        color: Color(0xFF4B1EFF), size: 20),
+                    onPressed: onSetActive,
+                    tooltip: 'Set as Active',
+                  ),
                 IconButton(
                   icon:
                       const Icon(Icons.delete_outline, color: Colors.red, size: 20),

@@ -8,8 +8,9 @@ class Document {
   final String fileName;
   final bool isDraft;
   final String ownerId;
-  final String location; // New
-  final String auditor; // New
+  final String location;
+  final String auditor;
+  final String templateId; // Links to the audit template used
 
   Document({
     required this.id,
@@ -21,8 +22,9 @@ class Document {
     required this.fileName,
     required this.isDraft,
     required this.ownerId,
-    required this.location, // New
-    required this.auditor, // New
+    required this.location,
+    required this.auditor,
+    this.templateId = 'default_vmm_template',
   });
 
   Map<String, dynamic> toMap() {
@@ -36,8 +38,9 @@ class Document {
       'fileName': fileName,
       'isDraft': isDraft ? 1 : 0,
       'ownerId': ownerId,
-      'location': location, // New
-      'auditor': auditor, // New
+      'location': location,
+      'auditor': auditor,
+      'templateId': templateId,
     };
   }
 
@@ -52,8 +55,9 @@ class Document {
       fileName: map['fileName'],
       isDraft: map['isDraft'] == 1,
       ownerId: map['ownerId'],
-      location: map['location'] ?? '', // New
-      auditor: map['auditor'] ?? '', // New
+      location: map['location'] ?? '',
+      auditor: map['auditor'] ?? '',
+      templateId: map['templateId'] as String? ?? 'default_vmm_template',
     );
   }
 

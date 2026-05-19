@@ -189,6 +189,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     setState(() => _isSaving = true);
     try {
       final now = DateTime.now();
+      // Get the currently active template
+      final activeTemplate = await DatabaseHelper().getActiveTemplate();
+      final templateId = activeTemplate?.id ?? 'default_vmm_template';
       final document = Document(
         id: 'doc_${now.millisecondsSinceEpoch}',
         title: title,
@@ -201,6 +204,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         ownerId: widget.userId,
         location: location,
         auditor: auditor,
+        templateId: templateId,
       );
       await DatabaseHelper().insertDocument(document);
       if (!currentContext.mounted) return;

@@ -23,10 +23,15 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
   final _formKey = GlobalKey<FormState>();
   final _nameController = TextEditingController();
   final _descController = TextEditingController();
-  List<TemplateItem> _items = [];
+
+  /// Which default items are checked (keyed by defaultKey).
+  final Map<String, bool> _defaultChecks = {};
+
+  /// Custom (non-default) items added by the user.
+  List<TemplateItem> _customItems = [];
+
   bool _isLoading = true;
   bool _isSaving = false;
-
 
   bool get _isEditing => widget.templateId != null;
 
@@ -44,6 +49,11 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
   }
 
   Future<void> _loadTemplate() async {
+    // Initialize all defaults as checked
+    for (final item in DefaultTemplateItems.all) {
+      _defaultChecks[item['defaultKey'] as String] = true;
+    }
+
     if (_isEditing) {
       final db = DatabaseHelper();
       final template = await db.getTemplate(widget.templateId!);
@@ -51,20 +61,33 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
       if (template != null) {
         _nameController.text = template.name;
         _descController.text = template.description;
-        _items = items;
+
+        // Uncheck all defaults first, then re-check only those present
+        for (final key in _defaultChecks.keys.toList()) {
+          _defaultChecks[key] = false;
+        }
+        for (final item in items) {
+          if (item.isDefault && item.defaultKey.isNotEmpty) {
+            _defaultChecks[item.defaultKey] = true;
+          }
+        }
+
+        // Separate custom items
+        _customItems = items.where((i) => !i.isDefault).toList();
       }
     }
     setState(() => _isLoading = false);
   }
 
   String _generateId() =>
-      'tmpl_${DateTime.now().millisecondsSinceEpoch}_${_items.length}';
+      'tmpl_${DateTime.now().millisecondsSinceEpoch}_${_customItems.length}';
 
-  void _addItem() {
+  void _addCustomItem() {
     final formKey = GlobalKey<FormState>();
     final labelController = TextEditingController();
-    String category = 'Certification';
-    String itemType = 'date_expiry';
+    String section = DefaultTemplateItems.sectionProfilingTeam;
+    String category = 'Other';
+    String itemType = 'text';
     bool isMandatory = false;
 
     showDialog(
@@ -82,10 +105,42 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.stretch,
                   children: [
-                    const Text('Add Checklist Item',
+                    const Text('Add Custom Field',
                         style: TextStyle(
                             fontWeight: FontWeight.bold, fontSize: 20)),
                     const SizedBox(height: 20),
+                    // Section dropdown
+                    DropdownButtonFormField<String>(
+                      initialValue: section,
+                      items: DefaultTemplateItems.allSections.map((s) {
+                        return DropdownMenuItem(
+                          value: s,
+                          child: Text(DefaultTemplateItems.sectionLabel(s)),
+                        );
+                      }).toList(),
+                      onChanged: (val) =>
+                          setDialogState(() => section = val ?? section),
+                      decoration: InputDecoration(
+                        labelText: 'Section (Page)',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                    ),
+                    const SizedBox(height: 16),
+                    // Label
+                    TextFormField(
+                      controller: labelController,
+                      decoration: InputDecoration(
+                        labelText: 'Field Label',
+                        hintText: 'e.g. Safety Induction Expiry',
+                        border: OutlineInputBorder(
+                            borderRadius: BorderRadius.circular(12)),
+                      ),
+                      validator: (val) => (val == null || val.trim().isEmpty)
+                          ? 'Enter a label'
+                          : null,
+                    ),
+                    const SizedBox(height: 16),
                     // Category
                     DropdownButtonFormField<String>(
                       initialValue: category,
@@ -99,6 +154,12 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                             child: Text('Certification')),
                         DropdownMenuItem(
                             value: 'Competency', child: Text('Competency')),
+                        DropdownMenuItem(
+                            value: 'Summary', child: Text('Summary')),
+                        DropdownMenuItem(
+                            value: 'Evidence', child: Text('Evidence')),
+                        DropdownMenuItem(
+                            value: 'Notes', child: Text('Notes')),
                         DropdownMenuItem(value: 'Other', child: Text('Other')),
                       ],
                       onChanged: (val) => category = val ?? category,
@@ -109,35 +170,21 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                       ),
                     ),
                     const SizedBox(height: 16),
-                    // Label
-                    TextFormField(
-                      controller: labelController,
-                      decoration: InputDecoration(
-                        labelText: 'Label',
-                        hintText: 'e.g. NTSMP Expiry',
-                        border: OutlineInputBorder(
-                            borderRadius: BorderRadius.circular(12)),
-                      ),
-                      validator: (val) => (val == null || val.trim().isEmpty)
-                          ? 'Enter a label'
-                          : null,
-                    ),
-                    const SizedBox(height: 16),
                     // Item type
                     DropdownButtonFormField<String>(
                       initialValue: itemType,
                       items: const [
                         DropdownMenuItem(
+                            value: 'text', child: Text('📝 Text Input')),
+                        DropdownMenuItem(
                             value: 'date_expiry',
                             child: Text('📅 Date (Expiry Check)')),
-                        DropdownMenuItem(
-                            value: 'text', child: Text('📝 Text Input')),
                         DropdownMenuItem(
                             value: 'boolean', child: Text('✅ Yes / No')),
                       ],
                       onChanged: (val) => itemType = val ?? itemType,
                       decoration: InputDecoration(
-                        labelText: 'Item Type',
+                        labelText: 'Field Type',
                         border: OutlineInputBorder(
                             borderRadius: BorderRadius.circular(12)),
                       ),
@@ -146,7 +193,7 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                     // Mandatory toggle
                     SwitchListTile(
                       title: const Text('Mandatory'),
-                      subtitle: const Text('Flag this item as required'),
+                      subtitle: const Text('Flag this field as required'),
                       value: isMandatory,
                       onChanged: (val) =>
                           setDialogState(() => isMandatory = val),
@@ -172,13 +219,16 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                               final newItem = TemplateItem(
                                 id: _generateId(),
                                 templateId: widget.templateId ?? '',
+                                section: section,
                                 category: category,
                                 label: labelController.text.trim(),
                                 itemType: itemType,
                                 isMandatory: isMandatory,
-                                sortOrder: _items.length,
+                                sortOrder: _customItems.length,
+                                isDefault: false,
+                                defaultKey: '',
                               );
-                              setState(() => _items.add(newItem));
+                              setState(() => _customItems.add(newItem));
                               Navigator.pop(context);
                             },
                             style: ElevatedButton.styleFrom(
@@ -204,16 +254,46 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
     );
   }
 
-  void _removeItem(int index) {
-    setState(() => _items.removeAt(index));
+  void _removeCustomItem(int index) {
+    setState(() => _customItems.removeAt(index));
   }
 
-  void _toggleMandatory(int index) {
-    setState(() {
-      _items[index] = _items[index].copyWith(
-        isMandatory: !_items[index].isMandatory,
-      );
-    });
+  /// Build all the TemplateItems to save (default checked + custom).
+  List<TemplateItem> _buildAllItems(String templateId) {
+    final List<TemplateItem> allItems = [];
+    int sortOrder = 0;
+
+    // Add checked default items
+    for (final def in DefaultTemplateItems.all) {
+      final key = def['defaultKey'] as String;
+      if (_defaultChecks[key] == true) {
+        allItems.add(TemplateItem(
+          id: '${templateId}_default_$key',
+          templateId: templateId,
+          section: def['section'] as String,
+          category: def['category'] as String,
+          label: def['label'] as String,
+          itemType: def['itemType'] as String,
+          isMandatory: (def['isMandatory'] as int) == 1,
+          sortOrder: sortOrder++,
+          isDefault: true,
+          defaultKey: key,
+        ));
+      }
+    }
+
+    // Add custom items
+    for (int i = 0; i < _customItems.length; i++) {
+      allItems.add(_customItems[i].copyWith(
+        templateId: templateId,
+        sortOrder: sortOrder++,
+        id: _customItems[i].id.isEmpty
+            ? '${templateId}_custom_$i'
+            : null,
+      ));
+    }
+
+    return allItems;
   }
 
   Future<void> _saveTemplate({required bool publish}) async {
@@ -227,9 +307,12 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
       );
       return;
     }
-    if (_items.isEmpty) {
+
+    // Check at least one item
+    final hasCheckedDefaults = _defaultChecks.values.any((v) => v);
+    if (!hasCheckedDefaults && _customItems.isEmpty) {
       ScaffoldMessenger.of(currentContext).showSnackBar(
-        const SnackBar(content: Text('Template cannot be empty.')),
+        const SnackBar(content: Text('Template must have at least one field.')),
       );
       return;
     }
@@ -247,6 +330,7 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
         name: name,
         description: _descController.text.trim(),
         isPublished: publish,
+        isActive: false, // Active is managed separately from Manage Templates
         createdDate: _isEditing
             ? (await db.getTemplate(templateId))?.createdDate ?? now
             : now,
@@ -254,21 +338,19 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
       );
 
       if (_isEditing) {
-        await db.updateTemplate(template);
+        // Preserve isActive status when updating
+        final existing = await db.getTemplate(templateId);
+        final updatedTemplate = template.copyWith(
+          isActive: existing?.isActive ?? false,
+        );
+        await db.updateTemplate(updatedTemplate);
       } else {
         await db.insertTemplate(template);
       }
 
-      // Update items with correct templateId and sortOrder
-      final updatedItems = <TemplateItem>[];
-      for (int i = 0; i < _items.length; i++) {
-        updatedItems.add(_items[i].copyWith(
-          templateId: templateId,
-          sortOrder: i,
-          id: _items[i].id.isEmpty ? '${templateId}_item_$i' : null,
-        ));
-      }
-      await db.replaceTemplateItems(templateId, updatedItems);
+      // Build and save all items
+      final allItems = _buildAllItems(templateId);
+      await db.replaceTemplateItems(templateId, allItems);
 
       // Best-effort sync to XAMPP
       if (publish) {
@@ -276,10 +358,10 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
           await BackendService.publishTemplate(
             templateId: templateId,
             name: name,
-            itemCount: updatedItems.length,
+            itemCount: allItems.length,
           );
         } catch (_) {
-          // Non-blocking — template saved locally regardless
+          // Non-blocking
         }
       }
 
@@ -412,22 +494,44 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                         ),
                         maxLines: 2,
                       ),
-                      const SizedBox(height: 20),
-                      // Checklist items header
+                      const SizedBox(height: 24),
+
+                      // ══════════════════════════════════════════════
+                      // SECTION A: Default Fields Checklist
+                      // ══════════════════════════════════════════════
+                      _buildSectionHeader(
+                        'Default Fields',
+                        Icons.checklist,
+                        'Toggle VMM standard fields on/off',
+                      ),
+                      const SizedBox(height: 12),
+
+                      // Group defaults by section
+                      for (final section in DefaultTemplateItems.allSections) ...[
+                        _buildSectionSubheader(
+                          DefaultTemplateItems.sectionLabel(section),
+                        ),
+                        ..._buildDefaultChecklistForSection(section),
+                        const SizedBox(height: 8),
+                      ],
+
+                      const SizedBox(height: 24),
+
+                      // ══════════════════════════════════════════════
+                      // SECTION B: Custom Fields
+                      // ══════════════════════════════════════════════
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          Text(
-                            'Checklist Items (${_items.length})',
-                            style: const TextStyle(
-                              fontWeight: FontWeight.bold,
-                              fontSize: 16,
-                            ),
+                          _buildSectionHeader(
+                            'Custom Fields',
+                            Icons.add_box_outlined,
+                            'Add your own fields to any section',
                           ),
                           ElevatedButton.icon(
-                            onPressed: _addItem,
+                            onPressed: _addCustomItem,
                             icon: const Icon(Icons.add, size: 18),
-                            label: const Text('Add Item'),
+                            label: const Text('Add Field'),
                             style: ElevatedButton.styleFrom(
                               backgroundColor: const Color(0xFF4B1EFF),
                               foregroundColor: Colors.white,
@@ -441,16 +545,14 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                         ],
                       ),
                       const SizedBox(height: 12),
-                      // Items list
-                      if (_items.isEmpty)
+
+                      if (_customItems.isEmpty)
                         Container(
                           padding: const EdgeInsets.all(32),
                           decoration: BoxDecoration(
                             color: Colors.white,
                             borderRadius: BorderRadius.circular(16),
-                            border: Border.all(
-                                color: Colors.grey.shade200,
-                                style: BorderStyle.solid),
+                            border: Border.all(color: Colors.grey.shade200),
                           ),
                           child: const Center(
                             child: Column(
@@ -458,9 +560,9 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                                 Icon(Icons.playlist_add,
                                     size: 48, color: Colors.grey),
                                 SizedBox(height: 8),
-                                Text('No checklist items yet',
+                                Text('No custom fields yet',
                                     style: TextStyle(color: Colors.grey)),
-                                Text('Tap "Add Item" to add questions',
+                                Text('Tap "Add Field" to create custom fields',
                                     style: TextStyle(
                                         color: Colors.grey, fontSize: 13)),
                               ],
@@ -468,31 +570,10 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                           ),
                         )
                       else
-                        ReorderableListView.builder(
-                          shrinkWrap: true,
-                          physics: const NeverScrollableScrollPhysics(),
-                          itemCount: _items.length,
-                          onReorder: (oldIndex, newIndex) {
-                            setState(() {
-                              if (newIndex > oldIndex) newIndex--;
-                              final item = _items.removeAt(oldIndex);
-                              _items.insert(newIndex, item);
-                            });
-                          },
-                          itemBuilder: (context, index) {
-                            final item = _items[index];
-                            return _ItemTile(
-                              key: ValueKey(item.id),
-                              item: item,
-                              onDelete: () => _removeItem(index),
-                              onToggleMandatory: () =>
-                                  _toggleMandatory(index),
-                              typeIcon: _typeIcon(item.itemType),
-                              typeColor: _typeColor(item.itemType),
-                              typeLabel: _typeLabel(item.itemType),
-                            );
-                          },
-                        ),
+                        // Group custom items by section
+                        for (final section in DefaultTemplateItems.allSections) ...[
+                          ..._buildCustomItemsForSection(section),
+                        ],
                       const SizedBox(height: 80),
                     ],
                   ),
@@ -563,21 +644,130 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
       ),
     );
   }
+
+  // ── Helper Widgets ──────────────────────────────────────────────────────
+
+  Widget _buildSectionHeader(String title, IconData icon, String subtitle) {
+    return Row(
+      children: [
+        Icon(icon, color: const Color(0xFF4B1EFF), size: 22),
+        const SizedBox(width: 8),
+        Expanded(
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(title,
+                  style: const TextStyle(
+                      fontWeight: FontWeight.bold, fontSize: 16)),
+              Text(subtitle,
+                  style: TextStyle(fontSize: 12, color: Colors.grey.shade600)),
+            ],
+          ),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildSectionSubheader(String label) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.only(bottom: 4),
+      decoration: BoxDecoration(
+        color: const Color(0xFF4B1EFF).withValues(alpha: 0.06),
+        borderRadius: BorderRadius.circular(8),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.folder_outlined,
+              size: 16, color: const Color(0xFF4B1EFF)),
+          const SizedBox(width: 8),
+          Text(label,
+              style: const TextStyle(
+                fontWeight: FontWeight.w600,
+                fontSize: 13,
+                color: Color(0xFF4B1EFF),
+              )),
+        ],
+      ),
+    );
+  }
+
+  List<Widget> _buildDefaultChecklistForSection(String section) {
+    final items = DefaultTemplateItems.all
+        .where((item) => item['section'] == section)
+        .toList();
+
+    return items.map((item) {
+      final key = item['defaultKey'] as String;
+      final label = item['label'] as String;
+      final type = item['itemType'] as String;
+
+      return Container(
+        margin: const EdgeInsets.only(bottom: 2),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(10),
+        ),
+        child: CheckboxListTile(
+          value: _defaultChecks[key] ?? false,
+          onChanged: (val) {
+            setState(() => _defaultChecks[key] = val ?? false);
+          },
+          title: Text(label,
+              style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w500)),
+          subtitle: Row(
+            children: [
+              Icon(_typeIcon(type), size: 14, color: _typeColor(type)),
+              const SizedBox(width: 4),
+              Text(_typeLabel(type),
+                  style: TextStyle(fontSize: 11, color: _typeColor(type))),
+            ],
+          ),
+          activeColor: const Color(0xFF4B1EFF),
+          controlAffinity: ListTileControlAffinity.leading,
+          dense: true,
+          contentPadding: const EdgeInsets.symmetric(horizontal: 8),
+        ),
+      );
+    }).toList();
+  }
+
+  List<Widget> _buildCustomItemsForSection(String section) {
+    final items = _customItems
+        .where((i) => i.section == section)
+        .toList();
+    if (items.isEmpty) return [];
+
+    return [
+      _buildSectionSubheader(
+          '${DefaultTemplateItems.sectionLabel(section)} (Custom)'),
+      ...items.map((item) {
+        final index = _customItems.indexOf(item);
+        return _CustomItemTile(
+          key: ValueKey(item.id),
+          item: item,
+          onDelete: () => _removeCustomItem(index),
+          typeIcon: _typeIcon(item.itemType),
+          typeColor: _typeColor(item.itemType),
+          typeLabel: _typeLabel(item.itemType),
+        );
+      }),
+      const SizedBox(height: 8),
+    ];
+  }
 }
 
-class _ItemTile extends StatelessWidget {
+class _CustomItemTile extends StatelessWidget {
   final TemplateItem item;
   final VoidCallback onDelete;
-  final VoidCallback onToggleMandatory;
   final IconData typeIcon;
   final Color typeColor;
   final String typeLabel;
 
-  const _ItemTile({
+  const _CustomItemTile({
     super.key,
     required this.item,
     required this.onDelete,
-    required this.onToggleMandatory,
     required this.typeIcon,
     required this.typeColor,
     required this.typeLabel,
@@ -609,9 +799,12 @@ class _ItemTile extends StatelessWidget {
         ),
         subtitle: Row(
           children: [
-            Text(
-              item.category,
-              style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+            Flexible(
+              child: Text(
+                item.category,
+                style: TextStyle(fontSize: 12, color: Colors.grey.shade600),
+                overflow: TextOverflow.ellipsis,
+              ),
             ),
             const SizedBox(width: 8),
             Container(
@@ -623,6 +816,7 @@ class _ItemTile extends StatelessWidget {
               child: Text(
                 typeLabel,
                 style: TextStyle(fontSize: 10, color: typeColor),
+                overflow: TextOverflow.ellipsis,
               ),
             ),
           ],
@@ -630,41 +824,36 @@ class _ItemTile extends StatelessWidget {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            GestureDetector(
-              onTap: onToggleMandatory,
-              child: Container(
-                padding:
-                    const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                decoration: BoxDecoration(
+            Container(
+              padding:
+                  const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+              decoration: BoxDecoration(
+                color: item.isMandatory
+                    ? Colors.red.withValues(alpha: 0.1)
+                    : Colors.grey.withValues(alpha: 0.08),
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(
                   color: item.isMandatory
-                      ? Colors.red.withValues(alpha: 0.1)
-                      : Colors.grey.withValues(alpha: 0.08),
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: item.isMandatory
-                        ? Colors.red.withValues(alpha: 0.3)
-                        : Colors.grey.withValues(alpha: 0.2),
-                  ),
+                      ? Colors.red.withValues(alpha: 0.3)
+                      : Colors.grey.withValues(alpha: 0.2),
                 ),
-                child: Text(
-                  item.isMandatory ? 'Required' : 'Optional',
-                  style: TextStyle(
-                    fontSize: 11,
-                    fontWeight: FontWeight.w600,
-                    color: item.isMandatory ? Colors.red : Colors.grey,
-                  ),
+              ),
+              child: Text(
+                item.isMandatory ? 'Required' : 'Optional',
+                style: TextStyle(
+                  fontSize: 11,
+                  fontWeight: FontWeight.w600,
+                  color: item.isMandatory ? Colors.red : Colors.grey,
                 ),
               ),
             ),
-            const SizedBox(width: 4),
+            const SizedBox(width: 2),
             IconButton(
               icon: const Icon(Icons.close, size: 18, color: Colors.red),
               onPressed: onDelete,
               padding: EdgeInsets.zero,
               constraints: const BoxConstraints(),
             ),
-            const SizedBox(width: 8),
-            Icon(Icons.drag_handle, color: Colors.grey.shade400, size: 20),
           ],
         ),
       ),

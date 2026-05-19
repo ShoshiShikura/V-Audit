@@ -213,27 +213,33 @@ class _ProfileScreenState extends State<ProfileScreen> {
       _isSaving = true;
     });
     final currentContext = context;
+    // Capture before clearing state so the success message is correct
+    final didChangePassword = _isChangingPassword;
     try {
-      String newPassword = _userData?.password ?? '';
-      if (_isChangingPassword) {
-        newPassword =
+      final db = DatabaseHelper();
+      final userId = _userData?.id ?? widget.userId;
+
+      // Update full name
+      await db.updateUserFullName(userId, _fullNameController.text.trim());
+
+      // Update password if requested
+      String newPasswordHash = _userData?.password ?? '';
+      if (didChangePassword) {
+        newPasswordHash =
             sha256.convert(utf8.encode(_newPasswordController.text)).toString();
+        await db.updatePassword(userId, newPasswordHash);
       }
 
-      // Create updated user
-      final updatedUser = User(
-        id: _userData?.id ?? widget.userId,
-        password: newPassword,
-        role: _userData?.role ?? widget.role,
-        fullName: _fullNameController.text.trim(),
-      );
-
-      // Update user in database
-      await DatabaseHelper().deleteUser(_userData?.id ?? widget.userId);
-      await DatabaseHelper().addUser(updatedUser);
+      // Reload user data from DB to stay in sync
+      final refreshedUser = await db.getUser(userId);
 
       setState(() {
-        _userData = updatedUser;
+        _userData = refreshedUser ?? User(
+          id: userId,
+          password: newPasswordHash,
+          role: _userData?.role ?? widget.role,
+          fullName: _fullNameController.text.trim(),
+        );
         _isEditing = false;
         _isChangingPassword = false;
         _isSaving = false;
@@ -243,10 +249,9 @@ class _ProfileScreenState extends State<ProfileScreen> {
         _clearErrors();
       });
 
-      String message = 'Profile updated successfully';
-      if (_isChangingPassword) {
-        message = 'Password changed successfully';
-      }
+      final message = didChangePassword
+          ? 'Password changed successfully'
+          : 'Profile updated successfully';
 
       if (currentContext.mounted) {
         ScaffoldMessenger.of(currentContext).showSnackBar(
