@@ -63,7 +63,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 12,
+        version: 13,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -81,7 +81,7 @@ class DatabaseHelper {
         return await openDatabase(
           encryptedPath,
           password: password,
-          version: 11,
+          version: 13,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
         );
@@ -106,7 +106,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 11,
+        version: 13,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -219,7 +219,8 @@ class DatabaseHelper {
       isDraft INTEGER,
       ownerId TEXT,
       location TEXT,
-      auditor TEXT
+      auditor TEXT,
+      templateId TEXT DEFAULT 'default_vmm_template'
     )
   ''');
 
@@ -264,6 +265,8 @@ class DatabaseHelper {
         ntsmpDate TEXT,
         aespDate TEXT,
         agtesDate TEXT,
+        csmeDate TEXT,
+        oykDate TEXT,
         poleProficiency TEXT,
         ca2aDate TEXT,
         ca2cDate TEXT
@@ -762,6 +765,22 @@ class DatabaseHelper {
         }, conflictAlgorithm: ConflictAlgorithm.ignore);
       }
     }
+
+    if (oldVersion < 13) {
+      // Add missing csmeDate and oykDate columns to profiling_team
+      try {
+        await db.execute(
+            "ALTER TABLE profiling_team ADD COLUMN csmeDate TEXT;");
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+      try {
+        await db.execute(
+            "ALTER TABLE profiling_team ADD COLUMN oykDate TEXT;");
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+    }
   }
 
   Future<User?> getUser(String id) async {
@@ -1019,6 +1038,8 @@ class DatabaseHelper {
       'ntsmpDate': data['ntsmpDate']?.toString(), // Not sensitive
       'aespDate': data['aespDate']?.toString(), // Not sensitive
       'agtesDate': data['agtesDate']?.toString(), // Not sensitive
+      'csmeDate': data['csmeDate']?.toString(), // Not sensitive
+      'oykDate': data['oykDate']?.toString(), // Not sensitive
       'poleProficiency': data['poleProficiency'], // Not sensitive
       'ca2aDate': data['ca2aDate']?.toString(), // Not sensitive
       'ca2cDate': data['ca2cDate']?.toString(), // Not sensitive

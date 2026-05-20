@@ -24,6 +24,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   final FocusNode _companyFocusNode = FocusNode();
   final LayerLink _companyFieldLink = LayerLink();
   OverlayEntry? _companyOverlayEntry;
+  final FocusNode _locationFocusNode = FocusNode();
+  final LayerLink _locationFieldLink = LayerLink();
+  OverlayEntry? _locationOverlayEntry;
   bool _isSaving = false;
   DateTime? _auditDate;
   String? _selectedTeamType;
@@ -31,12 +34,25 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   List<String> _companies = [];
   List<String> _filteredCompanies = [];
 
+  static const List<String> _sabahLocations = [
+    'BEAUFORT', 'BELURAN', 'KENINGAU', 'KINABATANGAN',
+    'KOTA BELUD', 'KOTA KINABALU', 'KOTA MARUDU', 'KUALA PENYU',
+    'KUDAT', 'KUNAK', 'LAHAD DATU', 'NABAWAN',
+    'PAPAR', 'PENAMPANG', 'PITAS', 'PUTATAN',
+    'RANAU', 'SANDAKAN', 'SEMPORNA', 'SIPITANG',
+    'TAMBUNAN', 'TAWAU', 'TENOM', 'TONGOD', 'TUARAN',
+  ];
+  List<String> _filteredLocations = [];
+
   @override
   void initState() {
     super.initState();
     _loadCompanies();
+    _filteredLocations = List.from(_sabahLocations);
     _companyController.addListener(_filterCompanies);
     _companyFocusNode.addListener(_handleCompanyFocusChange);
+    _locationController.addListener(_filterLocations);
+    _locationFocusNode.addListener(_handleLocationFocusChange);
   }
 
   @override
@@ -46,7 +62,9 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
     _locationController.dispose();
     _auditorController.dispose();
     _companyFocusNode.dispose();
+    _locationFocusNode.dispose();
     _removeCompanyOverlay();
+    _removeLocationOverlay();
     super.dispose();
   }
 
@@ -108,6 +126,97 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
   void _removeCompanyOverlay() {
     _companyOverlayEntry?.remove();
     _companyOverlayEntry = null;
+  }
+
+  // ── Location overlay (same pattern as company) ──
+
+  void _handleLocationFocusChange() {
+    if (!_locationFocusNode.hasFocus) {
+      _removeLocationOverlay();
+    } else {
+      _showLocationOverlay();
+    }
+  }
+
+  void _showLocationOverlay() {
+    _removeLocationOverlay();
+    if (_filteredLocations.isEmpty) return;
+    final overlay = Overlay.of(context);
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox != null) {
+      _locationOverlayEntry = OverlayEntry(
+        builder: (context) => Positioned(
+          width: renderBox.size.width - 48,
+          child: CompositedTransformFollower(
+            link: _locationFieldLink,
+            showWhenUnlinked: false,
+            offset: const Offset(0, 60),
+            child: Material(
+              elevation: 8,
+              borderRadius: BorderRadius.circular(12),
+              child: ConstrainedBox(
+                constraints: const BoxConstraints(maxHeight: 200),
+                child: _filteredLocations.isEmpty
+                    ? const Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: Text(
+                          'No locations found',
+                          style: TextStyle(fontSize: 16, color: Colors.grey),
+                        ),
+                      )
+                    : ListView.builder(
+                        shrinkWrap: true,
+                        itemCount: _filteredLocations.length,
+                        itemBuilder: (context, index) {
+                          final loc = _filteredLocations[index];
+                          return ListTile(
+                            title: Text(loc),
+                            dense: true,
+                            onTap: () => _onLocationSelected(loc),
+                          );
+                        },
+                      ),
+              ),
+            ),
+          ),
+        ),
+      );
+      overlay.insert(_locationOverlayEntry!);
+    }
+  }
+
+  void _removeLocationOverlay() {
+    _locationOverlayEntry?.remove();
+    _locationOverlayEntry = null;
+  }
+
+  void _filterLocations() {
+    final query = _locationController.text.toLowerCase();
+    setState(() {
+      if (query.isEmpty) {
+        _filteredLocations = List.from(_sabahLocations);
+      } else {
+        _filteredLocations = _sabahLocations
+            .where((l) => l.toLowerCase().contains(query))
+            .toList();
+      }
+      final exactMatch = _sabahLocations.any((l) => l.toLowerCase() == query);
+      if (_locationFocusNode.hasFocus &&
+          _filteredLocations.isNotEmpty &&
+          !exactMatch) {
+        _showLocationOverlay();
+      } else {
+        _removeLocationOverlay();
+      }
+    });
+  }
+
+  void _onLocationSelected(String location) {
+    setState(() {
+      _locationController.text = location;
+    });
+    _removeLocationOverlay();
+    _locationFocusNode.unfocus();
   }
 
   Future<void> _loadCompanies() async {
@@ -257,6 +366,7 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
         onTap: () {
           FocusScope.of(context).unfocus();
           _removeCompanyOverlay();
+          _removeLocationOverlay();
         },
         child: Center(
           child: SingleChildScrollView(
@@ -328,28 +438,40 @@ class _AddDocumentScreenState extends State<AddDocumentScreen> {
                     ),
                   ),
                   const SizedBox(height: 16),
-                  TextFormField(
-                    controller: _locationController,
-                    decoration: const InputDecoration(
-                      labelText: 'Location',
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide.none,
+                  CompositedTransformTarget(
+                    link: _locationFieldLink,
+                    child: TextFormField(
+                      controller: _locationController,
+                      focusNode: _locationFocusNode,
+                      decoration: const InputDecoration(
+                        labelText: 'Location',
+                        hintText: 'Search and select location...',
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide.none,
+                        ),
+                        errorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.red, width: 1.5),
+                        ),
+                        focusedErrorBorder: OutlineInputBorder(
+                          borderRadius: BorderRadius.all(Radius.circular(12)),
+                          borderSide: BorderSide(color: Colors.red, width: 2),
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        suffixIcon: Icon(Icons.search),
                       ),
-                      errorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.red, width: 1.5),
-                      ),
-                      focusedErrorBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.all(Radius.circular(12)),
-                        borderSide: BorderSide(color: Colors.red, width: 2),
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
+                      validator: (val) => (val == null || val.trim().isEmpty)
+                          ? 'Enter location'
+                          : null,
+                      onTap: () {
+                        if (_sabahLocations.isNotEmpty) _showLocationOverlay();
+                      },
+                      onChanged: (value) {
+                        _filterLocations();
+                      },
                     ),
-                    validator: (val) => (val == null || val.trim().isEmpty)
-                        ? 'Enter location'
-                        : null,
                   ),
                   const SizedBox(height: 16),
                   TextFormField(

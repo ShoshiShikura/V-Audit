@@ -179,6 +179,8 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
         'ntsmpDate': _ntsmpDate,
         'aespDate': _aespDate,
         'agtesDate': _agtesDate,
+        'csmeDate': _csmeDate,
+        'oykDate': _oykDate,
         'poleProficiency': _poleProficiency,
         'ca2aDate': _ca2aDate,
         'ca2cDate': _ca2cDate,
@@ -792,19 +794,35 @@ class _ExpiryDateField extends StatelessWidget {
     required this.onTap,
   });
 
-  // Helper method to check if a date is expired
+  // Helper method to check if a date is expired (before audit date)
   bool _isDateExpired(DateTime? date) {
     if (date == null || auditDate == null) return false;
     return date.isBefore(auditDate!);
+  }
+
+  // Helper method to check if a date is expiring soon (within 3 months after audit date)
+  bool _isDateExpiringSoon(DateTime? date) {
+    if (date == null || auditDate == null) return false;
+    if (_isDateExpired(date)) return false;
+    final threeMonthsLater = DateTime(
+      auditDate!.year,
+      auditDate!.month + 3,
+      auditDate!.day,
+    );
+    return date.isBefore(threeMonthsLater);
   }
 
   // Helper method to format date with expiry indicator
   String _formatDateWithExpiry(DateTime? date) {
     if (date == null) return '';
     if (_isDateExpired(date)) {
-      final expired =
-          '${date.month.toString().padLeft(2, '0')}/${date.year.toString().substring(2)}';
+      final expired = '${date.day}/${date.month}';
       return 'EXPIRED $expired';
+    }
+    if (_isDateExpiringSoon(date)) {
+      final formatted =
+          '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+      return formatted;
     }
     final formatted =
         '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
@@ -814,7 +832,40 @@ class _ExpiryDateField extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final isExpired = _isDateExpired(date);
-    final isValid = date != null && auditDate != null && !isExpired;
+    final isExpiringSoon = _isDateExpiringSoon(date);
+    final isValid = date != null && auditDate != null && !isExpired && !isExpiringSoon;
+
+    // Determine colors
+    Color? fillColor;
+    Color textColor;
+    Widget? statusIcon;
+
+    if (isExpired) {
+      fillColor = Colors.red.shade50;
+      textColor = Colors.red;
+      statusIcon = const Padding(
+        padding: EdgeInsets.only(right: 8),
+        child: Icon(Icons.error, color: Colors.red, size: 18),
+      );
+    } else if (isExpiringSoon) {
+      fillColor = Colors.amber.shade50;
+      textColor = Colors.amber.shade900;
+      statusIcon = Padding(
+        padding: const EdgeInsets.only(right: 8),
+        child: Icon(Icons.warning_amber_rounded, color: Colors.amber.shade700, size: 18),
+      );
+    } else if (isValid) {
+      fillColor = Colors.green.shade50;
+      textColor = Colors.green.shade800;
+      statusIcon = const Padding(
+        padding: EdgeInsets.only(right: 8),
+        child: Icon(Icons.check_circle, color: Colors.green, size: 18),
+      );
+    } else {
+      fillColor = Colors.white;
+      textColor = Colors.black;
+      statusIcon = null;
+    }
 
     return Padding(
       padding: const EdgeInsets.symmetric(vertical: 8),
@@ -831,16 +882,7 @@ class _ExpiryDateField extends StatelessWidget {
             ),
           ),
           const SizedBox(width: 8),
-          if (isValid)
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Icon(Icons.check_circle, color: Colors.green, size: 18),
-            )
-          else if (isExpired)
-            const Padding(
-              padding: EdgeInsets.only(right: 8),
-              child: Icon(Icons.error, color: Colors.red, size: 18),
-            ),
+          if (statusIcon != null) statusIcon,
           SizedBox(
             width: 140,
             child: GestureDetector(
@@ -854,9 +896,7 @@ class _ExpiryDateField extends StatelessWidget {
                       borderSide: BorderSide.none,
                     ),
                     filled: true,
-                    fillColor: isExpired
-                        ? Colors.red.shade50
-                        : (isValid ? Colors.green.shade50 : Colors.white),
+                    fillColor: fillColor,
                     contentPadding: const EdgeInsets.symmetric(
                         vertical: 10, horizontal: 12),
                   ),
@@ -866,9 +906,7 @@ class _ExpiryDateField extends StatelessWidget {
                   readOnly: true,
                   style: TextStyle(
                     fontWeight: FontWeight.w500,
-                    color: isExpired
-                        ? Colors.red
-                        : (isValid ? Colors.green.shade800 : Colors.black),
+                    color: textColor,
                   ),
                 ),
               ),

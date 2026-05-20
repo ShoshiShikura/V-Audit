@@ -171,6 +171,25 @@ class BackendService {
     }
   }
 
+  /// Deletes a user from the central MySQL database on XAMPP.
+  /// Returns true if the server confirmed deletion, false otherwise.
+  static Future<bool> deleteUserFromServer(String id) async {
+    final url = Uri.parse('$_baseUrl/delete_user.php');
+    try {
+      final response = await http.post(
+        url,
+        body: {'id': id},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['ok'] == true || decoded['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Synchronization to XAMPP ─────────────────────────────────────────
 
   /// Pushes all offline documents, templates, and evidence metadata to XAMPP.

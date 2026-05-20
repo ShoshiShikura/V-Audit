@@ -220,10 +220,20 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
 
   Future<void> _deleteUser(String id) async {
     await DatabaseHelper().deleteUser(id);
+
+    // Also remove from XAMPP server (best-effort)
+    final serverOk = await BackendService.deleteUserFromServer(id);
+
     _loadUsers();
     if (!mounted) return;
     ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('User deleted')),
+      SnackBar(
+        content: Text(
+          serverOk
+              ? 'User deleted locally and from server.'
+              : 'User deleted locally. Could not reach server — remove manually or retry later.',
+        ),
+      ),
     );
   }
 
