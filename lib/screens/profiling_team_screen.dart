@@ -5,6 +5,7 @@ import 'summary_team_screen.dart';
 import '../db/database_helper.dart';
 import 'document_team_screen.dart';
 import '../screens/app_drawer.dart';
+import '../services/session_manager.dart';
 
 class AnimatedSavedRow extends StatelessWidget {
   final double opacity;
@@ -64,6 +65,7 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
 
   bool _showSaved = false; // Add this for the saved message
   double _savedOpacity = 0.0; // For animation
+  String _documentStatus = 'draft';
 
   // Worker picker functionality
   List<Worker> _workers = [];
@@ -107,6 +109,7 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
     super.initState();
     _loadAllTeams();
     _loadAuditDate();
+    _loadDocumentStatus();
     _loadWorkers();
     _loadAndSetPersonFields(_selectedPerson);
     _nameController.addListener(_autoSaveCurrentPerson);
@@ -114,6 +117,21 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
     _nameController.addListener(_filterWorkers);
     _nameFocusNode.addListener(_handleNameFocusChange);
   }
+
+  Future<void> _loadDocumentStatus() async {
+    final db = await DatabaseHelper().database;
+    final docResult = await db.query('documents',
+        where: 'id = ?', whereArgs: [widget.team.documentId], limit: 1);
+    if (docResult.isNotEmpty) {
+      if (mounted) {
+        setState(() {
+          _documentStatus = docResult.first['status'] as String? ?? 'draft';
+        });
+      }
+    }
+  }
+
+  bool get _isLocked => SessionManager.isAdministrator(widget.role) || _documentStatus == 'pending' || _documentStatus == 'approved';
 
   // Load audit date from document
   Future<void> _loadAuditDate() async {
@@ -258,17 +276,9 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
                       )
                     : ListView.builder(
                         shrinkWrap: true,
-                        itemCount:
-                            _filteredWorkers.length + 1, // +1 for quick add
+                        itemCount: _filteredWorkers.length,
                         itemBuilder: (context, index) {
-                          if (index == 0) {
-                            return ListTile(
-                              title: const Text('Quick Add Custom'),
-                              leading: const Icon(Icons.add),
-                              onTap: () => _showQuickAddDialog(),
-                            );
-                          }
-                          final worker = _filteredWorkers[index - 1];
+                          final worker = _filteredWorkers[index];
                           final maskedIC = _maskIC(worker.ic);
                           return ListTile(
                             title: Text(worker.name),
@@ -325,53 +335,6 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
     });
     _removeNameOverlay();
     _nameFocusNode.unfocus();
-  }
-
-  void _showQuickAddDialog() {
-    final nameController = TextEditingController();
-    final icController = TextEditingController();
-
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        title: const Text('Quick Add Person'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            TextField(
-              controller: nameController,
-              decoration: const InputDecoration(labelText: 'Name'),
-              autofocus: true,
-            ),
-            const SizedBox(height: 12),
-            TextField(
-              controller: icController,
-              decoration: const InputDecoration(labelText: 'IC'),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('Cancel'),
-          ),
-          ElevatedButton(
-            onPressed: () {
-              if (nameController.text.trim().isNotEmpty) {
-                setState(() {
-                  _nameController.text = nameController.text.trim();
-                  _icController.text = icController.text.trim();
-                });
-                Navigator.pop(context);
-                _removeNameOverlay();
-                _nameFocusNode.unfocus();
-              }
-            },
-            child: const Text('Add'),
-          ),
-        ],
-      ),
-    );
   }
 
   @override
@@ -434,6 +397,48 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
               style: const TextStyle(fontWeight: FontWeight.bold),
             ),
             const SizedBox(height: 16),
+            // Locked banner
+            if (_isLocked) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _documentStatus == 'approved'
+                      ? Colors.green.shade50
+                      : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _documentStatus == 'approved'
+                          ? Icons.check_circle
+                          : SessionManager.isAdministrator(widget.role)
+                              ? Icons.visibility
+                              : Icons.lock,
+                      color: _documentStatus == 'approved'
+                          ? Colors.green
+                          : Colors.orange.shade800,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        SessionManager.isAdministrator(widget.role)
+                            ? 'Admin view: Read-only mode.'
+                            : 'This document is $_documentStatus and cannot be edited.',
+                        style: TextStyle(
+                          color: _documentStatus == 'approved'
+                              ? Colors.green.shade900
+                              : Colors.orange.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             // Person dropdown
             DropdownButtonFormField<int>(
               initialValue: _selectedPerson,
@@ -461,8 +466,14 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
               },
             ),
             const SizedBox(height: 16),
-            // Attendance radio
-            const Text('Attendance',
+            // Form content wrapper
+            AbsorbPointer(
+              absorbing: _isLocked,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Attendance radio
+                  const Text('Attendance',
                 style: TextStyle(fontWeight: FontWeight.w600)),
             RadioGroup<String>(
               groupValue: _attendance,
@@ -710,6 +721,9 @@ class _ProfilingTeamScreenState extends State<ProfilingTeamScreen> {
                   textAlign: TextAlign.center,
                 ),
               ],
+            ),
+                ],
+              ),
             ),
             const SizedBox(height: 24),
             Row(

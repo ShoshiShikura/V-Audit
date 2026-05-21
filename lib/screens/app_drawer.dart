@@ -15,6 +15,7 @@ import 'view_reports_screen.dart';
 import '../services/session_manager.dart';
 import 'manage_templates_screen.dart';
 import 'approval_screen.dart';
+import '../db/database_helper.dart';
 
 class DrawerHeaderSection extends StatelessWidget {
   final String userId;
@@ -287,52 +288,16 @@ class AppDrawer extends StatelessWidget {
                 ),
                 // Approval navigation (auditor-only)
                 if (!SessionManager.isAdministrator(role))
-                  ListTile(
-                    leading: Icon(Icons.approval,
-                        color: iconColor('approval') ?? const Color(0xFF4B1EFF)),
-                    title: Text('Approval',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: textColor('approval'))),
+                  _ApprovalMenuItem(
+                    userId: userId,
+                    role: role,
+                    currentPage: currentPage,
+                    iconColor: iconColor('approval'),
+                    textColor: textColor('approval'),
                     tileColor: tileColor('approval'),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    onTap: currentPage == 'approval'
-                        ? null
-                        : () => navigateTo('approval'),
+                    onTap: () => navigateTo('approval'),
                   ),
-                // Reports navigation (admin-only)
-                if (SessionManager.isAdministrator(role))
-                  ListTile(
-                    leading: Icon(Icons.assessment,
-                        color: iconColor('reports') ?? const Color(0xFF8E44AD)),
-                    title: Text('Reports',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: textColor('reports'))),
-                    tileColor: tileColor('reports'),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    onTap: currentPage == 'reports'
-                        ? null
-                        : () => navigateTo('reports'),
-                  ),
-                // Templates navigation (admin-only)
-                if (SessionManager.isAdministrator(role))
-                  ListTile(
-                    leading: Icon(Icons.article,
-                        color: iconColor('templates') ?? const Color(0xFF2980B9)),
-                    title: Text('Templates',
-                        style: TextStyle(
-                            fontWeight: FontWeight.w600,
-                            color: textColor('templates'))),
-                    tileColor: tileColor('templates'),
-                    shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(12)),
-                    onTap: currentPage == 'templates'
-                        ? null
-                        : () => navigateTo('templates'),
-                  ),
+
                 if (currentPage == 'dashboard') ...[
                   // Profile link removed in revert
                   // Security Settings - Hidden for future implementation
@@ -583,5 +548,98 @@ class AppDrawer extends StatelessWidget {
         );
       }
     }
+  }
+}
+
+class _ApprovalMenuItem extends StatefulWidget {
+  final String userId;
+  final String role;
+  final String currentPage;
+  final VoidCallback onTap;
+  final Color? iconColor;
+  final Color? textColor;
+  final Color? tileColor;
+
+  const _ApprovalMenuItem({
+    required this.userId,
+    required this.role,
+    required this.currentPage,
+    required this.onTap,
+    this.iconColor,
+    this.textColor,
+    this.tileColor,
+  });
+
+  @override
+  State<_ApprovalMenuItem> createState() => _ApprovalMenuItemState();
+}
+
+class _ApprovalMenuItemState extends State<_ApprovalMenuItem> {
+  int _notificationCount = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadNotificationCount();
+    DatabaseHelper.badgeRefreshNotifier.addListener(_loadNotificationCount);
+  }
+
+  @override
+  void dispose() {
+    DatabaseHelper.badgeRefreshNotifier.removeListener(_loadNotificationCount);
+    super.dispose();
+  }
+
+  Future<void> _loadNotificationCount() async {
+    if (SessionManager.isAdministrator(widget.role)) return;
+
+    final db = await DatabaseHelper().database;
+    final result = await db.rawQuery(
+      "SELECT COUNT(*) as count FROM documents WHERE ownerId = ? AND isRead = 0 AND (status = 'rejected' OR status = 'approved')",
+      [widget.userId],
+    );
+
+    if (result.isNotEmpty && mounted) {
+      setState(() {
+        _notificationCount = (result.first['count'] as int?) ?? 0;
+      });
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return ListTile(
+      leading: Icon(Icons.approval,
+          color: widget.iconColor ?? const Color(0xFF4B1EFF)),
+      title: Row(
+        children: [
+          Text('Approval',
+              style: TextStyle(
+                  fontWeight: FontWeight.w600,
+                  color: widget.textColor)),
+          if (_notificationCount > 0) ...[
+            const SizedBox(width: 8),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+              decoration: BoxDecoration(
+                color: Colors.red,
+                borderRadius: BorderRadius.circular(10),
+              ),
+              child: Text(
+                '$_notificationCount',
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 10,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ),
+          ],
+        ],
+      ),
+      tileColor: widget.tileColor,
+      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      onTap: widget.currentPage == 'approval' ? null : widget.onTap,
+    );
   }
 }

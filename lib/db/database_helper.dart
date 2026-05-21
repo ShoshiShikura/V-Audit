@@ -16,9 +16,14 @@ import '../services/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
 
+import 'package:flutter/foundation.dart';
+
 class DatabaseHelper {
   static final DatabaseHelper _instance = DatabaseHelper._internal();
   static Database? _database;
+  
+  /// Global notifier to trigger UI updates for the notification badge
+  static final ValueNotifier<bool> badgeRefreshNotifier = ValueNotifier(false);
 
   factory DatabaseHelper() => _instance;
 
@@ -63,7 +68,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 14,
+        version: 15,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -81,7 +86,7 @@ class DatabaseHelper {
         return await openDatabase(
           encryptedPath,
           password: password,
-          version: 14,
+          version: 15,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
         );
@@ -222,7 +227,8 @@ class DatabaseHelper {
       auditor TEXT,
       templateId TEXT DEFAULT 'default_vmm_template',
       status TEXT DEFAULT 'draft',
-      rejectionRemark TEXT DEFAULT ''
+      rejectionRemark TEXT DEFAULT '',
+      isRead INTEGER DEFAULT 0
     )
   ''');
 
@@ -799,6 +805,14 @@ class DatabaseHelper {
         // Column might already exist, ignore error
       }
     }
+    if (oldVersion < 15) {
+      try {
+        await db.execute(
+            "ALTER TABLE documents ADD COLUMN isRead INTEGER DEFAULT 0;");
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+    }
   }
 
   /// Updates the status and optional rejection remark of a document.
@@ -809,11 +823,29 @@ class DatabaseHelper {
       {
         'status': status,
         'rejectionRemark': rejectionRemark,
+        'isRead': 0, // Reset read status on any status change
         'lastModified': DateTime.now().toIso8601String(),
       },
       where: 'id = ?',
       whereArgs: [docId],
     );
+    
+    // Trigger badge refresh since a new unread status was generated
+    badgeRefreshNotifier.value = !badgeRefreshNotifier.value;
+  }
+
+  /// Marks all approved and rejected documents for an auditor as read.
+  Future<void> markAuditorDocumentsAsRead(String auditorId) async {
+    final db = await database;
+    await db.update(
+      'documents',
+      {'isRead': 1},
+      where: "ownerId = ? AND (status = 'approved' OR status = 'rejected')",
+      whereArgs: [auditorId],
+    );
+    
+    // Trigger badge refresh since documents were read
+    badgeRefreshNotifier.value = !badgeRefreshNotifier.value;
   }
 
   Future<User?> getUser(String id) async {

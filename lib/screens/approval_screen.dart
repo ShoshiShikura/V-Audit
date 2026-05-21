@@ -3,6 +3,7 @@ import 'package:intl/intl.dart';
 import '../db/database_helper.dart';
 import '../models/document.dart';
 import 'app_drawer.dart';
+import '../services/session_manager.dart';
 import 'document_team_screen.dart';
 
 class ApprovalScreen extends StatefulWidget {
@@ -54,12 +55,19 @@ class _ApprovalScreenState extends State<ApprovalScreen>
 
     final docs = rows.map((r) => Document.fromMap(r)).toList();
 
-    setState(() {
-      _pendingDocs = docs.where((d) => d.status == 'pending').toList();
-      _approvedDocs = docs.where((d) => d.status == 'approved').toList();
-      _rejectedDocs = docs.where((d) => d.status == 'rejected').toList();
-      _isLoading = false;
-    });
+    // Mark as read
+    if (!SessionManager.isAdministrator(widget.role)) {
+      await DatabaseHelper().markAuditorDocumentsAsRead(widget.userId);
+    }
+
+    if (mounted) {
+      setState(() {
+        _pendingDocs = docs.where((d) => d.status == 'pending').toList();
+        _approvedDocs = docs.where((d) => d.status == 'approved').toList();
+        _rejectedDocs = docs.where((d) => d.status == 'rejected').toList();
+        _isLoading = false;
+      });
+    }
   }
 
   Color _statusColor(String status) {

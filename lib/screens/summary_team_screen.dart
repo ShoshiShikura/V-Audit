@@ -4,6 +4,7 @@ import '../models/team.dart';
 import '../db/database_helper.dart';
 import 'company_name_screen.dart';
 import '../screens/app_drawer.dart';
+import '../services/session_manager.dart';
 
 class AnimatedSavedRow extends StatelessWidget {
   final double opacity;
@@ -68,8 +69,11 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
   List<String> _typeOptions = [];
   List<String> _filteredTypeOptions = [];
   String _documentType = '';
+  String _documentStatus = 'draft';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
+
+  bool get _isLocked => SessionManager.isAdministrator(widget.role) || _documentStatus == 'pending' || _documentStatus == 'approved';
 
   @override
   void initState() {
@@ -95,7 +99,7 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
     final db = await DatabaseHelper().database;
     final result = await db.query(
       'documents',
-      columns: ['type', 'createdDate'],
+      columns: ['type', 'createdDate', 'status'],
       where: 'id = ?',
       whereArgs: [widget.documentId],
       limit: 1,
@@ -103,8 +107,10 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
     if (result.isNotEmpty) {
       final type = (result.first['type'] as String? ?? '').toUpperCase();
       final createdDate = result.first['createdDate'] as String?;
+      final status = result.first['status'] as String? ?? 'draft';
       setState(() {
         _documentType = type;
+        _documentStatus = status;
         _typeOptions = [
           '$type FIBER OVERHEAD',
           '$type FIBER UNDERGROUND',
@@ -432,6 +438,48 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
           padding: const EdgeInsets.all(24),
           children: [
             const SizedBox(height: 8),
+            // Locked banner
+            if (_isLocked) ...[
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                decoration: BoxDecoration(
+                  color: _documentStatus == 'approved'
+                      ? Colors.green.shade50
+                      : Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                child: Row(
+                  children: [
+                    Icon(
+                      _documentStatus == 'approved'
+                          ? Icons.check_circle
+                          : SessionManager.isAdministrator(widget.role)
+                              ? Icons.visibility
+                              : Icons.lock,
+                      color: _documentStatus == 'approved'
+                          ? Colors.green
+                          : Colors.orange.shade800,
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Text(
+                        SessionManager.isAdministrator(widget.role)
+                            ? 'Admin view: Read-only mode.'
+                            : 'This document is $_documentStatus and cannot be edited.',
+                        style: TextStyle(
+                          color: _documentStatus == 'approved'
+                              ? Colors.green.shade900
+                              : Colors.orange.shade900,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+            ],
             const Text('Team', style: TextStyle(fontWeight: FontWeight.bold)),
             DropdownButtonFormField<Team>(
               initialValue: _selectedTeam,
@@ -456,8 +504,14 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
               ),
             ),
             const SizedBox(height: 16),
-            const Text('Type of Team',
-                style: TextStyle(fontWeight: FontWeight.bold)),
+            // Form content wrapper
+            AbsorbPointer(
+              absorbing: _isLocked,
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  const Text('Type of Team',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
             CompositedTransformTarget(
               link: _typeFieldLink,
               child: TextFormField(
@@ -658,6 +712,9 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
                         ),
                       ),
                     ),
+                ],
+              ),
+            ),
                 ],
               ),
             ),

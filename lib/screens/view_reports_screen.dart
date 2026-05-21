@@ -578,6 +578,13 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
 
   void _onReportTap(Map<String, dynamic> item) {
     final doc = item['document'] as Document;
+    if (doc.status == 'approved') {
+      _onReportAction('export_pdf', item);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Approved document cannot be edited. Exporting to PDF...')),
+      );
+      return;
+    }
     Navigator.push(
       context,
       MaterialPageRoute(

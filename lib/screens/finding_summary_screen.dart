@@ -11,6 +11,7 @@ import '../models/document.dart';
 import 'company_name_screen.dart';
 import '../services/pdf_service.dart';
 import '../screens/app_drawer.dart';
+import '../services/session_manager.dart';
 
 class AnimatedSavedRow extends StatelessWidget {
   final double opacity;
@@ -56,6 +57,8 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
   bool _hasLoadedRemark = false;
   Timer? _debounce; // <-- Add debounce timer
   String _documentStatus = 'draft';
+
+  bool get _isLocked => SessionManager.isAdministrator(widget.role) || _documentStatus == 'pending' || _documentStatus == 'approved';
 
   @override
   void initState() {
@@ -240,9 +243,52 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
         padding: const EdgeInsets.all(24),
         children: [
           const SizedBox(height: 8),
+          // Locked banner
+          if (_isLocked) ...[
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              decoration: BoxDecoration(
+                color: _documentStatus == 'approved'
+                    ? Colors.green.shade50
+                    : Colors.orange.shade50,
+                borderRadius: BorderRadius.circular(12),
+              ),
+              child: Row(
+                children: [
+                  Icon(
+                    _documentStatus == 'approved'
+                        ? Icons.check_circle
+                        : SessionManager.isAdministrator(widget.role)
+                            ? Icons.visibility
+                            : Icons.lock,
+                    color: _documentStatus == 'approved'
+                        ? Colors.green
+                        : Colors.orange.shade800,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Text(
+                      SessionManager.isAdministrator(widget.role)
+                          ? 'Admin view: Read-only mode.'
+                          : 'This document is $_documentStatus and cannot be edited.',
+                      style: TextStyle(
+                        color: _documentStatus == 'approved'
+                            ? Colors.green.shade900
+                            : Colors.orange.shade900,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(height: 16),
+          ],
           const Text('Remark', style: TextStyle(fontWeight: FontWeight.bold)),
           TextFormField(
             controller: _remarkController,
+            readOnly: _isLocked,
             maxLength: 500,
             maxLines: 3,
             decoration: InputDecoration(
@@ -331,13 +377,14 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
           ),
             const SizedBox(height: 16),
             // Submit for Approval button
-            if (_documentStatus == 'draft')
+            if (_documentStatus == 'draft' || _documentStatus == 'rejected')
               SizedBox(
                 width: double.infinity,
                 child: ElevatedButton.icon(
                   icon: const Icon(Icons.send),
-                  label: const Text('Submit for Approval',
-                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  label: Text(
+                      _documentStatus == 'rejected' ? 'Resubmit for Approval' : 'Submit for Approval',
+                      style: const TextStyle(fontWeight: FontWeight.bold)),
                   style: ElevatedButton.styleFrom(
                     backgroundColor: const Color(0xFF4CAF50),
                     foregroundColor: Colors.white,

@@ -145,6 +145,56 @@ class DocumentCard extends StatelessWidget {
     }
   }
 
+  Widget _statusBadge(String? status) {
+    Color color;
+    String label;
+    IconData icon;
+    switch (status) {
+      case 'pending':
+        color = Colors.orange;
+        label = 'Pending';
+        icon = Icons.hourglass_top;
+        break;
+      case 'approved':
+        color = const Color(0xFF4CAF50);
+        label = 'Approved';
+        icon = Icons.check_circle;
+        break;
+      case 'rejected':
+        color = Colors.red;
+        label = 'Rejected';
+        icon = Icons.cancel;
+        break;
+      default:
+        color = Colors.grey;
+        label = 'Draft';
+        icon = Icons.edit_note;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 14, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   void _showDocumentActions(
     BuildContext context,
     Map<String, dynamic> document,
@@ -187,23 +237,24 @@ class DocumentCard extends StatelessWidget {
                 ),
               ),
               const Divider(height: 1, thickness: 0.5),
-              ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 4,
+              if (document['status'] != 'approved')
+                ListTile(
+                  dense: true,
+                  contentPadding: const EdgeInsets.symmetric(
+                    horizontal: 20,
+                    vertical: 4,
+                  ),
+                  leading: Icon(
+                    Icons.edit,
+                    color: const Color(0xFF4B1EFF),
+                    size: 20,
+                  ),
+                  title: const Text('Edit', style: TextStyle(fontSize: 15)),
+                  onTap: () {
+                    Navigator.pop(context);
+                    onAction('edit');
+                  },
                 ),
-                leading: Icon(
-                  Icons.edit,
-                  color: const Color(0xFF4B1EFF),
-                  size: 20,
-                ),
-                title: const Text('Edit', style: TextStyle(fontSize: 15)),
-                onTap: () {
-                  Navigator.pop(context);
-                  onAction('edit');
-                },
-              ),
               ListTile(
                 dense: true,
                 contentPadding: const EdgeInsets.symmetric(
@@ -374,6 +425,8 @@ class DocumentCard extends StatelessWidget {
                               .bodySmall
                               ?.copyWith(color: Colors.black54),
                         ),
+                        const SizedBox(height: 8),
+                        _statusBadge(document['status'] as String?),
                       ],
                     ),
                   ),
@@ -462,6 +515,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
           'createdDate': doc.createdDate, // Add createdDate for display
           'lastModified': DateFormat('yyyy-MM-dd').format(doc.lastModified),
           'type': doc.type,
+          'status': doc.status,
           'document': doc, // Store the full document object
         };
       }).toList();
@@ -637,6 +691,14 @@ class _DashboardScreenState extends State<DashboardScreen> {
   }
 
   void _onDocumentTap(Map<String, dynamic> document) {
+    if (document['status'] == 'approved') {
+      // If approved, trigger export directly instead of opening it
+      _onDocumentAction('export', document);
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('Approved document cannot be edited. Exporting to PDF...')),
+      );
+      return;
+    }
     final doc = document['document'];
     Navigator.push(
       context,
@@ -1739,6 +1801,60 @@ class _DashboardScreenState extends State<DashboardScreen> {
     );
   }
 
+  Widget _buildAdminMenuButton({
+    required IconData icon,
+    required String label,
+    required Color color,
+    required VoidCallback onPressed,
+  }) {
+    return Container(
+      margin: const EdgeInsets.only(bottom: 12),
+      child: InkWell(
+        onTap: onPressed,
+        borderRadius: BorderRadius.circular(16),
+        child: Ink(
+          decoration: BoxDecoration(
+            color: Colors.white,
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: Colors.grey.shade200),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withValues(alpha: 0.02),
+                blurRadius: 4,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 20),
+          child: Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: color.withValues(alpha: 0.1),
+                  borderRadius: BorderRadius.circular(10),
+                ),
+                child: Icon(icon, color: color, size: 22),
+              ),
+              const SizedBox(width: 16),
+              Expanded(
+                child: Text(
+                  label,
+                  style: const TextStyle(
+                    fontSize: 15,
+                    fontWeight: FontWeight.w600,
+                    color: Colors.black87,
+                  ),
+                ),
+              ),
+              const Icon(Icons.chevron_right, color: Colors.grey, size: 20),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -1759,37 +1875,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
           ),
         ),
         actions: [
-          if (SessionManager.isAuditor(widget.role))
-            IconButton(
-              icon: const Icon(Icons.cloud_sync, color: Color(0xFF4B1EFF)),
-              tooltip: 'Sync Audit Data to XAMPP',
-              onPressed: () async {
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Starting synchronization...')),
-                );
-                
-                bool okImages = await BackendService.syncEvidenceImagesToXampp();
-                bool okData = await BackendService.syncAuditDataToXampp();
-
-                if (!context.mounted) return;
-                
-                if (okImages && okData) {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Synchronization to XAMPP successful!'),
-                      backgroundColor: Colors.green,
-                    ),
-                  );
-                } else {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(
-                      content: Text('Synchronization encountered errors. Make sure XAMPP is running.'),
-                      backgroundColor: Colors.red,
-                    ),
-                  );
-                }
-              },
-            ),
+          // Hidden for now — XAMPP sync not configured
+          // if (SessionManager.isAuditor(widget.role))
+          //   IconButton(
+          //     icon: const Icon(Icons.cloud_sync, color: Color(0xFF4B1EFF)),
+          //     tooltip: 'Sync Audit Data to XAMPP',
+          //     onPressed: () async {
+          //       ScaffoldMessenger.of(context).showSnackBar(
+          //         const SnackBar(content: Text('Starting synchronization...')),
+          //       );
+          //       
+          //       bool okImages = await BackendService.syncEvidenceImagesToXampp();
+          //       bool okData = await BackendService.syncAuditDataToXampp();
+          //
+          //       if (!context.mounted) return;
+          //       
+          //       if (okImages && okData) {
+          //         ScaffoldMessenger.of(context).showSnackBar(
+          //           const SnackBar(
+          //             content: Text('Synchronization to XAMPP successful!'),
+          //             backgroundColor: Colors.green,
+          //           ),
+          //         );
+          //       } else {
+          //         ScaffoldMessenger.of(context).showSnackBar(
+          //           const SnackBar(
+          //             content: Text('Synchronization encountered errors. Make sure XAMPP is running.'),
+          //             backgroundColor: Colors.red,
+          //           ),
+          //         );
+          //       }
+          //     },
+          //   ),
         ],
       ),
       backgroundColor: const Color(0xFFF7F8FA),
@@ -1807,126 +1924,119 @@ class _DashboardScreenState extends State<DashboardScreen> {
             ),
             const SizedBox(height: 20),
             // Search and filter bar
-            Row(
-              children: [
-                Expanded(
-                  child: TextField(
-                    controller: _searchController,
-                    decoration: InputDecoration(
-                      hintText: 'Search documents...',
-                      prefixIcon: const Icon(Icons.search),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(12),
-                        borderSide: BorderSide.none,
-                      ),
-                      filled: true,
-                      fillColor: Colors.white,
-                      contentPadding: const EdgeInsets.symmetric(
-                        vertical: 0,
-                        horizontal: 8,
+            if (!SessionManager.isAdministrator(widget.role)) ...[
+              Row(
+                children: [
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      decoration: InputDecoration(
+                        hintText: 'Search documents...',
+                        prefixIcon: const Icon(Icons.search),
+                        border: OutlineInputBorder(
+                          borderRadius: BorderRadius.circular(12),
+                          borderSide: BorderSide.none,
+                        ),
+                        filled: true,
+                        fillColor: Colors.white,
+                        contentPadding: const EdgeInsets.symmetric(
+                          vertical: 0,
+                          horizontal: 8,
+                        ),
                       ),
                     ),
                   ),
-                ),
-                const SizedBox(width: 8),
-                Material(
-                  color: Theme.of(context).cardColor,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                    side: BorderSide(color: Colors.grey.shade300),
-                  ),
-                  child: Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      IconButton(
-                        icon: const Icon(Icons.filter_list),
-                        onPressed: _showSortBottomSheet,
-                        tooltip: 'Sort',
-                      ),
-                      IconButton(
-                        icon: const Icon(Icons.tune),
-                        onPressed: _showFilterBottomSheet,
-                        tooltip: 'Filter',
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 12),
-            // View toggle
-            Row(
-              children: [
-                Expanded(
-                  child: Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white,
+                  const SizedBox(width: 8),
+                  Material(
+                    color: Theme.of(context).cardColor,
+                    shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: Colors.grey.shade300),
+                      side: BorderSide(color: Colors.grey.shade300),
                     ),
                     child: Row(
+                      mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(
-                          _isGroupedByCompany ? Icons.business : Icons.list,
-                          size: 20,
-                          color: Colors.grey.shade600,
+                        IconButton(
+                          icon: const Icon(Icons.filter_list),
+                          onPressed: _showSortBottomSheet,
+                          tooltip: 'Sort',
                         ),
-                        const SizedBox(width: 8),
-                        Expanded(
-                          child: Text(
-                            _isGroupedByCompany
-                                ? 'Group by Company'
-                                : 'All Documents',
-                            style: TextStyle(
-                              fontWeight: FontWeight.w500,
-                              color: Colors.grey.shade700,
-                            ),
-                          ),
-                        ),
-                        Switch(
-                          value: _isGroupedByCompany,
-                          onChanged: (value) {
-                            setState(() {
-                              _isGroupedByCompany = value;
-                            });
-                          },
-                          activeThumbColor: const Color(0xFF4B1EFF),
+                        IconButton(
+                          icon: const Icon(Icons.tune),
+                          onPressed: _showFilterBottomSheet,
+                          tooltip: 'Filter',
                         ),
                       ],
                     ),
                   ),
-                ),
-              ],
-            ),
-            const SizedBox(height: 16),
-            // Superadmin-only section
-            if (SessionManager.isAdministrator(widget.role)) ...[
+                ],
+              ),
+              const SizedBox(height: 12),
+              // View toggle
               Row(
                 children: [
                   Expanded(
-                    child: ElevatedButton.icon(
-                      onPressed: _navigateToViewUsers,
-                      icon: const Icon(Icons.people, color: Colors.white),
-                      label: const Text("View Users"),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF4B1EFF),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 8,
+                      ),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: Colors.grey.shade300),
+                      ),
+                      child: Row(
+                        children: [
+                          Icon(
+                            _isGroupedByCompany ? Icons.business : Icons.list,
+                            size: 20,
+                            color: Colors.grey.shade600,
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              _isGroupedByCompany
+                                  ? 'Group by Company'
+                                  : 'All Documents',
+                              style: TextStyle(
+                                fontWeight: FontWeight.w500,
+                                color: Colors.grey.shade700,
+                              ),
+                            ),
+                          ),
+                          Switch(
+                            value: _isGroupedByCompany,
+                            onChanged: (value) {
+                              setState(() {
+                                _isGroupedByCompany = value;
+                              });
+                            },
+                            activeThumbColor: const Color(0xFF4B1EFF),
+                          ),
+                        ],
                       ),
                     ),
                   ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton.icon(
+                ],
+              ),
+              const SizedBox(height: 16),
+            ],
+            // Superadmin-only section
+            if (SessionManager.isAdministrator(widget.role)) ...[
+              Expanded(
+                child: ListView(
+                  children: [
+                    _buildAdminMenuButton(
+                      icon: Icons.people,
+                      label: 'View Users',
+                      color: const Color(0xFF4B1EFF),
+                      onPressed: _navigateToViewUsers,
+                    ),
+                    _buildAdminMenuButton(
+                      icon: Icons.person_add,
+                      label: 'Add New User',
+                      color: const Color(0xFF2ECC71),
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -1938,27 +2048,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.person_add, color: Colors.white),
-                      label: const Text('Add New User'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2ECC71),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
+                    _buildAdminMenuButton(
+                      icon: Icons.assessment,
+                      label: 'View Reports',
+                      color: const Color(0xFF8E44AD),
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -1970,27 +2064,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.assessment, color: Colors.white),
-                      label: const Text('View Reports'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF8E44AD),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
+                    _buildAdminMenuButton(
+                      icon: Icons.article,
+                      label: 'Audit Templates',
+                      color: const Color(0xFF2980B9),
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -2002,27 +2080,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.article, color: Colors.white),
-                      label: const Text('Audit Templates'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF2980B9),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
+                    _buildAdminMenuButton(
+                      icon: Icons.business,
+                      label: 'Company List',
+                      color: const Color(0xFFE67E22),
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -2034,27 +2096,11 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.business, color: Colors.white),
-                      label: const Text('Company List'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFFE67E22),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 12),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
+                    _buildAdminMenuButton(
+                      icon: Icons.badge,
+                      label: 'Worker List',
+                      color: const Color(0xFF16A085),
                       onPressed: () {
                         Navigator.push(
                           context,
@@ -2066,63 +2112,38 @@ class _DashboardScreenState extends State<DashboardScreen> {
                           ),
                         );
                       },
-                      icon: const Icon(Icons.badge, color: Colors.white),
-                      label: const Text('Worker List'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF16A085),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: ElevatedButton.icon(
+                    _buildAdminMenuButton(
+                      icon: Icons.cloud_done,
+                      label: 'Test XAMPP Connection',
+                      color: const Color(0xFF3498DB),
                       onPressed: () {
                         BackendService.testConnection(context);
                       },
-                      icon: const Icon(Icons.cloud_done, color: Colors.white),
-                      label: const Text('Test XAMPP Connection'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: const Color(0xFF3498DB),
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(18),
-                        ),
-                        padding: const EdgeInsets.symmetric(vertical: 14),
-                        elevation: 0,
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
                     ),
-                  ),
-                ],
+                    const SizedBox(height: 8),
+                  ],
+                ),
               ),
-              const SizedBox(height: 20),
             ],
-            Text(
-              "Documents (${_filteredDocuments.length})",
-              style: Theme.of(context).textTheme.titleMedium?.copyWith(
-                    fontWeight: FontWeight.w600,
-                    color: Colors.black87,
-                  ),
-            ),
-            const SizedBox(height: 12),
-            Expanded(
-              child: _filteredDocuments.isEmpty
-                  ? const NoDocumentsFound()
-                  : _isGroupedByCompany
-                      ? _buildGroupedDocumentsList()
-                      : _buildRegularDocumentsList(),
-            ),
+            // Only auditors see the document list
+            if (!SessionManager.isAdministrator(widget.role)) ...[
+              Text(
+                "Documents (${_filteredDocuments.length})",
+                style: Theme.of(context).textTheme.titleMedium?.copyWith(
+                      fontWeight: FontWeight.w600,
+                      color: Colors.black87,
+                    ),
+              ),
+              const SizedBox(height: 12),
+              Expanded(
+                child: _filteredDocuments.isEmpty
+                    ? const NoDocumentsFound()
+                    : _isGroupedByCompany
+                        ? _buildGroupedDocumentsList()
+                        : _buildRegularDocumentsList(),
+              ),
+            ],
           ],
         ),
       ),

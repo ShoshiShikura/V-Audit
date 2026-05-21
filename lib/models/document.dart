@@ -13,6 +13,7 @@ class Document {
   final String templateId; // Links to the audit template used
   final String status; // draft, pending, approved, rejected
   final String rejectionRemark;
+  final bool isRead;
 
   Document({
     required this.id,
@@ -29,6 +30,7 @@ class Document {
     this.templateId = 'default_vmm_template',
     this.status = 'draft',
     this.rejectionRemark = '',
+    this.isRead = true,
   });
 
   Map<String, dynamic> toMap() {
@@ -47,6 +49,7 @@ class Document {
       'templateId': templateId,
       'status': status,
       'rejectionRemark': rejectionRemark,
+      'isRead': isRead ? 1 : 0,
     };
   }
 
@@ -66,6 +69,7 @@ class Document {
       templateId: map['templateId'] as String? ?? 'default_vmm_template',
       status: map['status'] as String? ?? 'draft',
       rejectionRemark: map['rejectionRemark'] as String? ?? '',
+      isRead: (map['isRead'] ?? 1) == 1,
     );
   }
 

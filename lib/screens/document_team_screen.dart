@@ -3,6 +3,7 @@ import '../db/database_helper.dart';
 import '../models/team.dart';
 import 'profiling_team_screen.dart';
 import '../screens/app_drawer.dart';
+import '../services/session_manager.dart';
 
 class NoTeamsFound extends StatelessWidget {
   const NoTeamsFound({super.key});
@@ -77,6 +78,7 @@ class _DocumentTeamScreenState extends State<DocumentTeamScreen> {
   String? _documentTeamType; // Store the document's team type
   bool _showSaved = false; // For entry saved message
   double _savedOpacity = 0.0; // For animation
+  String _documentStatus = 'draft'; // Track approval status
 
   @override
   void initState() {
@@ -85,12 +87,13 @@ class _DocumentTeamScreenState extends State<DocumentTeamScreen> {
   }
 
   Future<void> _loadDocumentAndTeams() async {
-    // Load the document to get its team type
+    // Load the document to get its team type and status
     final db = await DatabaseHelper().database;
     final docResult = await db.query('documents',
         where: 'id = ?', whereArgs: [widget.documentId], limit: 1);
     if (docResult.isNotEmpty) {
       _documentTeamType = docResult.first['type'] as String?;
+      _documentStatus = docResult.first['status'] as String? ?? 'draft';
     }
 
     // Load teams
@@ -98,6 +101,8 @@ class _DocumentTeamScreenState extends State<DocumentTeamScreen> {
         await DatabaseHelper().getTeamsByDocumentId(widget.documentId);
     setState(() => _teams = teams);
   }
+
+  bool get _isLocked => SessionManager.isAdministrator(widget.role) || _documentStatus == 'pending' || _documentStatus == 'approved';
 
   // Get available team types based on document team type
   List<String> get _availableTeamTypes {
@@ -261,7 +266,43 @@ class _DocumentTeamScreenState extends State<DocumentTeamScreen> {
       backgroundColor: const Color(0xFFF7F8FA),
       body: Column(
         children: [
-          const SizedBox(height: 24),
+          // Locked banner
+          if (_isLocked)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              color: _documentStatus == 'approved'
+                  ? Colors.green.shade50
+                  : Colors.orange.shade50,
+              child: Row(
+                children: [
+                  Icon(
+                    _documentStatus == 'approved'
+                        ? Icons.check_circle
+                        : Icons.lock,
+                    size: 20,
+                    color: _documentStatus == 'approved'
+                        ? Colors.green.shade700
+                        : Colors.orange.shade700,
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      _documentStatus == 'approved'
+                          ? 'This audit has been approved. Editing is locked.'
+                          : 'This audit is pending approval. Editing is locked.',
+                      style: TextStyle(
+                        fontWeight: FontWeight.w600,
+                        fontSize: 13,
+                        color: _documentStatus == 'approved'
+                            ? Colors.green.shade700
+                            : Colors.orange.shade700,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 24.0),
             child: SizedBox(
@@ -276,7 +317,7 @@ class _DocumentTeamScreenState extends State<DocumentTeamScreen> {
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   elevation: 0,
                 ),
-                onPressed: () {
+                onPressed: _isLocked ? null : () {
                   if (_isDialogOpen) return;
                   setState(() => _isDialogOpen = true);
                   showDialog(
@@ -397,8 +438,23 @@ class _DocumentTeamScreenState extends State<DocumentTeamScreen> {
                       final team = sortedTeams[index];
                       return TeamCard(
                         team: team,
-                        onDelete: () => _deleteTeam(team.id),
+                        onDelete: _isLocked ? () {} : () => _deleteTeam(team.id),
                         onTap: () {
+                          if (_isLocked) {
+                            ScaffoldMessenger.of(context).showSnackBar(
+                              SnackBar(
+                                content: Text(
+                                  _documentStatus == 'approved'
+                                      ? 'This audit has been approved. Editing is locked.'
+                                      : 'This audit is pending approval. Editing is locked.',
+                                ),
+                                backgroundColor: _documentStatus == 'approved'
+                                    ? Colors.green
+                                    : Colors.orange,
+                              ),
+                            );
+                            return;
+                          }
                           Navigator.push(
                             context,
                             MaterialPageRoute(
