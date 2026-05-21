@@ -61,6 +61,10 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
   bool _showSaved = false;
   Team? _lastLoadedTeam; // Track last loaded team for UI sync
   double _savedOpacity = 0.0;
+  DateTime? _auditDate;
+
+  // Auto-calculated remark data
+  String _autoRemark = '';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
 
@@ -291,15 +295,33 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
   @override
   void initState() {
     super.initState();
+    _loadDocumentAuditDate();
     _loadTeams();
-    _remarkController.addListener(_autoSave);
   }
 
   @override
   void dispose() {
-    _remarkController.removeListener(_autoSave);
     _remarkController.dispose();
     super.dispose();
+  }
+
+  Future<void> _loadDocumentAuditDate() async {
+    final db = await DatabaseHelper().database;
+    final result = await db.query(
+      'documents',
+      columns: ['createdDate'],
+      where: 'id = ?',
+      whereArgs: [widget.documentId],
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      final createdDate = result.first['createdDate'] as String?;
+      if (createdDate != null) {
+        setState(() {
+          _auditDate = DateTime.tryParse(createdDate);
+        });
+      }
+    }
   }
 
   Future<void> _loadTeams() async {
@@ -344,6 +366,84 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
         }
       }
     });
+    await _calculateRemark(team);
+  }
+
+  /// Auto-generates the remark text from profiling data:
+  /// - For each cert, shows "CERT = OK" (≥2 valid), "CERT = N" (1 valid), or "CERT = NONE" (0 valid)
+  /// - Only certs that are below 2 are printed
+  /// - If any person is absent, shows "[N] NOT PRESENT DURING INSPECTION."
+  Future<void> _calculateRemark(Team team) async {
+    final db = await DatabaseHelper().database;
+    final rows = await db.query(
+      'profiling_team',
+      where: 'teamId = ?',
+      whereArgs: [team.id],
+    );
+
+    if (rows.isEmpty) {
+      setState(() => _autoRemark = '');
+      _remarkController.text = '';
+      _saveCompanyData();
+      return;
+    }
+
+    // Certificate columns and their labels
+    const certFields = {
+      'ntsmpDate': 'NTSMP',
+      'aespDate': 'AESP',
+      'agtesDate': 'AGTES',
+      'csmeDate': 'CSME',
+      'oykDate': 'OYK',
+      'ca2aDate': 'CA2A',
+      'ca2cDate': 'CA2C',
+    };
+
+    final lines = <String>[];
+
+    for (final entry in certFields.entries) {
+      final field = entry.key;
+      final label = entry.value;
+      int validCount = 0;
+
+      for (final row in rows) {
+        final dateStr = row[field] as String?;
+        if (dateStr != null && dateStr.isNotEmpty) {
+          final date = DateTime.tryParse(dateStr);
+          if (date != null && _auditDate != null && !date.isBefore(_auditDate!)) {
+            validCount++;
+          }
+        }
+      }
+
+      // Only show certs below the minimum of 2
+      if (validCount < 2) {
+        if (validCount == 0) {
+          lines.add('$label = NONE');
+        } else {
+          lines.add('$label = $validCount ONLY');
+        }
+      }
+    }
+
+    // Count absent members
+    int absentCount = 0;
+    for (final row in rows) {
+      final attendance = (row['attendance'] as String? ?? '').toLowerCase();
+      if (attendance == 'not present') {
+        absentCount++;
+      }
+    }
+    if (absentCount > 0) {
+      lines.add('$absentCount NOT PRESENT DURING INSPECTION.');
+    }
+
+    final remark = lines.join('\n');
+    setState(() {
+      _autoRemark = remark;
+      _remarkController.text = remark;
+    });
+    _saveCompanyData();
   }
 
   Future<void> _loadTeamMembers(Team team) async {
@@ -468,7 +568,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
         'latitude': _latitude,
         'longitude': _longitude,
         'altitude': _altitude,
-        'remark': _remarkController.text,
+        'remark': _autoRemark,
         'members': membersToSave.join('|'),
       };
       final result = await db.query(
@@ -684,7 +784,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
         teams: _teams,
       ),
       appBar: AppBar(
-        title: const Text('Company Name'),
+        title: const Text('Physical Inspection'),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0.5,
@@ -952,21 +1052,52 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
             }),
             const SizedBox(height: 16),
             const Text('Remark', style: TextStyle(fontWeight: FontWeight.bold)),
-            TextFormField(
-              controller: _remarkController,
-              maxLength: 300,
-              maxLines: 3,
-              decoration: const InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.all(Radius.circular(12)),
-                  borderSide: BorderSide.none,
+            const SizedBox(height: 8),
+            if (_autoRemark.isNotEmpty)
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.orange.shade300),
                 ),
-                filled: true,
-                fillColor: Colors.white,
-                hintText: 'Enter remark...',
+                child: Text(
+                  _autoRemark,
+                  style: TextStyle(
+                    fontSize: 13,
+                    color: Colors.orange.shade900,
+                    fontWeight: FontWeight.w500,
+                    height: 1.5,
+                  ),
+                ),
+              )
+            else
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.green.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        'All certifications meet requirement. All members present.',
+                        style: TextStyle(
+                          fontSize: 13,
+                          color: Colors.green.shade800,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
               ),
-              onChanged: (val) => _autoSave(),
-            ),
             const SizedBox(height: 24),
             if (_showSaved) AnimatedSavedRow(opacity: _savedOpacity),
             const SizedBox(height: 8),

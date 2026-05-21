@@ -55,6 +55,7 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
   List<Team>? _teams;
   bool _hasLoadedRemark = false;
   Timer? _debounce; // <-- Add debounce timer
+  String _documentStatus = 'draft';
 
   @override
   void initState() {
@@ -65,6 +66,7 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
         _teams = teams;
       });
     });
+    _loadDocumentStatus();
     // Delay loading until after first frame to ensure context is ready
     WidgetsBinding.instance.addPostFrameCallback((_) {
       _loadRemark();
@@ -130,6 +132,64 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
       if (currentContext.mounted) {
         ScaffoldMessenger.of(currentContext).showSnackBar(
           SnackBar(content: Text('Failed to generate PDF: $e')),
+        );
+      }
+    }
+  }
+
+  Future<void> _loadDocumentStatus() async {
+    final db = await DatabaseHelper().database;
+    final result = await db.query(
+      'documents',
+      columns: ['status'],
+      where: 'id = ?',
+      whereArgs: [widget.documentId],
+      limit: 1,
+    );
+    if (result.isNotEmpty) {
+      setState(() {
+        _documentStatus = result.first['status'] as String? ?? 'draft';
+      });
+    }
+  }
+
+  Future<void> _submitForApproval() async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+        title: const Text('Submit for Approval'),
+        content: const Text(
+          'This audit will be sent to the administrator for review. '
+          'You will not be able to edit it until it is approved or rejected.\n\n'
+          'Are you sure you want to submit?',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: ElevatedButton.styleFrom(
+              backgroundColor: const Color(0xFF4CAF50),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('Submit'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      await DatabaseHelper().updateDocumentStatus(widget.documentId, 'pending', rejectionRemark: '');
+      setState(() => _documentStatus = 'pending');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Audit submitted for approval successfully!'),
+            backgroundColor: Color(0xFF4CAF50),
+          ),
         );
       }
     }
@@ -269,6 +329,77 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
               ),
             ],
           ),
+            const SizedBox(height: 16),
+            // Submit for Approval button
+            if (_documentStatus == 'draft')
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  icon: const Icon(Icons.send),
+                  label: const Text('Submit for Approval',
+                      style: TextStyle(fontWeight: FontWeight.bold)),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: const Color(0xFF4CAF50),
+                    foregroundColor: Colors.white,
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(24),
+                    ),
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    elevation: 0,
+                  ),
+                  onPressed: _submitForApproval,
+                ),
+              )
+            else if (_documentStatus == 'pending')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.orange.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.orange.shade300),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.hourglass_top, color: Colors.orange.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Pending Approval',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.orange.shade700,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              )
+            else if (_documentStatus == 'approved')
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(16),
+                decoration: BoxDecoration(
+                  color: Colors.green.shade50,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: Colors.green.shade300),
+                ),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: Colors.green.shade700, size: 20),
+                    const SizedBox(width: 8),
+                    Text(
+                      'Approved',
+                      style: TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: Colors.green.shade700,
+                        fontSize: 15,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
         ],
       ),
     );

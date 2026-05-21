@@ -14,6 +14,7 @@ import 'profile_screen.dart';
 import 'view_reports_screen.dart';
 import '../services/session_manager.dart';
 import 'manage_templates_screen.dart';
+import 'approval_screen.dart';
 
 class DrawerHeaderSection extends StatelessWidget {
   final String userId;
@@ -208,6 +209,14 @@ class AppDrawer extends StatelessWidget {
             ),
           );
           break;
+        case 'approval':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => ApprovalScreen(userId: userId, role: role),
+            ),
+          );
+          break;
         // Add more cases for profile, settings, etc.
       }
     }
@@ -276,6 +285,22 @@ class AppDrawer extends StatelessWidget {
                       ? null
                       : () => navigateTo('profile'),
                 ),
+                // Approval navigation (auditor-only)
+                if (!SessionManager.isAdministrator(role))
+                  ListTile(
+                    leading: Icon(Icons.approval,
+                        color: iconColor('approval') ?? const Color(0xFF4B1EFF)),
+                    title: Text('Approval',
+                        style: TextStyle(
+                            fontWeight: FontWeight.w600,
+                            color: textColor('approval'))),
+                    tileColor: tileColor('approval'),
+                    shape: RoundedRectangleBorder(
+                        borderRadius: BorderRadius.circular(12)),
+                    onTap: currentPage == 'approval'
+                        ? null
+                        : () => navigateTo('approval'),
+                  ),
                 // Reports navigation (admin-only)
                 if (SessionManager.isAdministrator(role))
                   ListTile(
@@ -537,8 +562,17 @@ class AppDrawer extends StatelessWidget {
     );
 
     if (confirmed == true) {
-      // Clear all stored data
+      // Preserve the data encryption key — it is needed to read
+      // encrypted profiling data (name, IC) after re-login.
+      final encryptionKey = await storage.read(key: 'data_encryption_key');
+
+      // Clear session data
       await storage.deleteAll();
+
+      // Restore encryption key so existing data remains readable
+      if (encryptionKey != null) {
+        await storage.write(key: 'data_encryption_key', value: encryptionKey);
+      }
 
       // Navigate to login screen and clear all previous routes
       if (context.mounted) {

@@ -63,7 +63,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 13,
+        version: 14,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -81,7 +81,7 @@ class DatabaseHelper {
         return await openDatabase(
           encryptedPath,
           password: password,
-          version: 13,
+          version: 14,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
         );
@@ -106,7 +106,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 13,
+        version: 14,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -220,7 +220,9 @@ class DatabaseHelper {
       ownerId TEXT,
       location TEXT,
       auditor TEXT,
-      templateId TEXT DEFAULT 'default_vmm_template'
+      templateId TEXT DEFAULT 'default_vmm_template',
+      status TEXT DEFAULT 'draft',
+      rejectionRemark TEXT DEFAULT ''
     )
   ''');
 
@@ -781,6 +783,37 @@ class DatabaseHelper {
         // Column might already exist, ignore error
       }
     }
+
+    if (oldVersion < 14) {
+      // Add status and rejectionRemark columns to documents for approval workflow
+      try {
+        await db.execute(
+            "ALTER TABLE documents ADD COLUMN status TEXT DEFAULT 'draft';");
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+      try {
+        await db.execute(
+            "ALTER TABLE documents ADD COLUMN rejectionRemark TEXT DEFAULT '';");
+      } catch (e) {
+        // Column might already exist, ignore error
+      }
+    }
+  }
+
+  /// Updates the status and optional rejection remark of a document.
+  Future<void> updateDocumentStatus(String docId, String status, {String rejectionRemark = ''}) async {
+    final db = await database;
+    await db.update(
+      'documents',
+      {
+        'status': status,
+        'rejectionRemark': rejectionRemark,
+        'lastModified': DateTime.now().toIso8601String(),
+      },
+      where: 'id = ?',
+      whereArgs: [docId],
+    );
   }
 
   Future<User?> getUser(String id) async {

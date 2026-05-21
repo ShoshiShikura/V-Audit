@@ -12,6 +12,7 @@ import 'dart:convert';
 import 'dart:io';
 import 'document_team_screen.dart';
 import 'app_drawer.dart';
+import '../services/session_manager.dart';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -140,11 +141,13 @@ class _ReportDocumentCard extends StatelessWidget {
   final Map<String, dynamic> reportData;
   final VoidCallback onTap;
   final void Function(String action) onAction;
+  final String role;
 
   const _ReportDocumentCard({
     required this.reportData,
     required this.onTap,
     required this.onAction,
+    required this.role,
   });
 
   Color _getTeamTypeColor(String type) {
@@ -261,6 +264,28 @@ class _ReportDocumentCard extends StatelessWidget {
                         ],
                       ),
                     ),
+                    if (SessionManager.isAdministrator(role) && doc.status == 'pending') ...[
+                      const PopupMenuItem(
+                        value: 'approve',
+                        child: Row(
+                          children: [
+                            Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 18),
+                            SizedBox(width: 8),
+                            Text('Approve'),
+                          ],
+                        ),
+                      ),
+                      const PopupMenuItem(
+                        value: 'reject',
+                        child: Row(
+                          children: [
+                            Icon(Icons.cancel, color: Colors.red, size: 18),
+                            SizedBox(width: 8),
+                            Text('Reject'),
+                          ],
+                        ),
+                      ),
+                    ],
                   ],
                 ),
               ],
@@ -278,15 +303,23 @@ class _ReportDocumentCard extends StatelessWidget {
               ],
             ),
             const SizedBox(height: 8),
-            // Footer
+            // Status badge
             Row(
               children: [
+                _statusBadge(doc.status),
+                const Spacer(),
                 Icon(Icons.account_circle, size: 14, color: Colors.grey.shade400),
                 const SizedBox(width: 4),
                 Text(
                   'Owner: ${doc.ownerId}',
                   style: TextStyle(fontSize: 11, color: Colors.grey.shade500),
                 ),
+              ],
+            ),
+            const SizedBox(height: 4),
+            // Footer
+            Row(
+              children: [
                 const Spacer(),
                 Text(
                   'Modified: $lastModifiedStr',
@@ -318,6 +351,56 @@ class _ReportDocumentCard extends StatelessWidget {
               text,
               style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.9)),
               overflow: TextOverflow.ellipsis,
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _statusBadge(String status) {
+    Color color;
+    String label;
+    IconData icon;
+    switch (status) {
+      case 'pending':
+        color = Colors.orange;
+        label = 'Pending';
+        icon = Icons.hourglass_top;
+        break;
+      case 'approved':
+        color = const Color(0xFF4CAF50);
+        label = 'Approved';
+        icon = Icons.check_circle;
+        break;
+      case 'rejected':
+        color = Colors.red;
+        label = 'Rejected';
+        icon = Icons.cancel;
+        break;
+      default:
+        color = Colors.grey;
+        label = 'Draft';
+        icon = Icons.edit_note;
+    }
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      decoration: BoxDecoration(
+        color: color.withValues(alpha: 0.1),
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: color.withValues(alpha: 0.3)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: 12, color: color),
+          const SizedBox(width: 4),
+          Text(
+            label,
+            style: TextStyle(
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+              color: color,
             ),
           ),
         ],
@@ -523,6 +606,107 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
       }
     } else if (action == 'export_data') {
       await _exportDocumentData(doc);
+    } else if (action == 'approve') {
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Approve Audit'),
+          content: Text('Approve "${doc.title}" by ${doc.auditor}?'),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: const Color(0xFF4CAF50),
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Approve'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        await DatabaseHelper().updateDocumentStatus(doc.id, 'approved');
+        await _loadData();
+        if (currentContext.mounted) {
+          ScaffoldMessenger.of(currentContext).showSnackBar(
+            const SnackBar(
+              content: Text('Audit approved successfully.'),
+              backgroundColor: Color(0xFF4CAF50),
+            ),
+          );
+        }
+      }
+    } else if (action == 'reject') {
+      final remarkController = TextEditingController();
+      final confirmed = await showDialog<bool>(
+        context: context,
+        builder: (context) => AlertDialog(
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          title: const Text('Reject Audit'),
+          content: Column(
+            mainAxisSize: MainAxisSize.min,
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Reject "${doc.title}" by ${doc.auditor}?'),
+              const SizedBox(height: 16),
+              const Text('Remark (will be sent to auditor)',
+                  style: TextStyle(fontWeight: FontWeight.w600, fontSize: 13)),
+              const SizedBox(height: 8),
+              TextField(
+                controller: remarkController,
+                maxLines: 3,
+                maxLength: 300,
+                decoration: InputDecoration(
+                  hintText: 'Enter reason for rejection...',
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                  ),
+                  filled: true,
+                  fillColor: Colors.grey.shade50,
+                ),
+              ),
+            ],
+          ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(context, false),
+              child: const Text('Cancel'),
+            ),
+            ElevatedButton(
+              onPressed: () => Navigator.pop(context, true),
+              style: ElevatedButton.styleFrom(
+                backgroundColor: Colors.red,
+                foregroundColor: Colors.white,
+              ),
+              child: const Text('Reject'),
+            ),
+          ],
+        ),
+      );
+      if (confirmed == true) {
+        await DatabaseHelper().updateDocumentStatus(
+          doc.id,
+          'rejected',
+          rejectionRemark: remarkController.text.trim(),
+        );
+        remarkController.dispose();
+        await _loadData();
+        if (currentContext.mounted) {
+          ScaffoldMessenger.of(currentContext).showSnackBar(
+            const SnackBar(
+              content: Text('Audit rejected.'),
+              backgroundColor: Colors.red,
+            ),
+          );
+        }
+      } else {
+        remarkController.dispose();
+      }
     }
   }
 
@@ -1098,6 +1282,7 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                               reportData: item,
                               onTap: () => _onReportTap(item),
                               onAction: (action) => _onReportAction(action, item),
+                              role: widget.role,
                             );
                           },
                           childCount: _filteredItems.length,
@@ -1166,6 +1351,7 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                 reportData: item,
                 onTap: () => _onReportTap(item),
                 onAction: (action) => _onReportAction(action, item),
+                role: widget.role,
               )),
         ],
       ),

@@ -45,7 +45,6 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
   List<Team> _teams = [];
   Team? _selectedTeam;
   final _typeController = TextEditingController();
-  final _ppeController = TextEditingController();
   String _competency = 'Competent';
   List<String> _competencyFailures = [];
   bool _showSaved = false;
@@ -53,6 +52,14 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
   bool _ppeRed = false;
   double _savedOpacity = 0.0; // For animation
   DateTime? _auditDate;
+
+  // Attendance auto-calculation
+  int _absentCount = 0;
+  String _manpowerWarning = '';
+
+  // PPE checkboxes
+  bool _safetyCone = true;
+  bool _safetySignage = true;
 
   // Type of Team dropdown overlay
   final FocusNode _typeFocusNode = FocusNode();
@@ -71,7 +78,6 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
     _loadTeams();
     _typeController.addListener(_autoSave);
     _typeController.addListener(_filterTypeOptions);
-    _ppeController.addListener(_autoSave);
     _typeFocusNode.addListener(_handleTypeFocusChange);
   }
 
@@ -79,9 +85,7 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
   void dispose() {
     _typeController.removeListener(_autoSave);
     _typeController.removeListener(_filterTypeOptions);
-    _ppeController.removeListener(_autoSave);
     _typeController.dispose();
-    _ppeController.dispose();
     _typeFocusNode.dispose();
     _removeTypeOverlay();
     super.dispose();
@@ -221,20 +225,83 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
       final data = result.first;
       _typeController.text =
           data['typeOfTeam'] != null ? data['typeOfTeam'] as String : '';
-      _ppeController.text = data['ppe'] != null ? data['ppe'] as String : '';
+      final ppeText = data['ppe'] as String? ?? '';
       setState(() {
         _typeOfTeamRed = (data['typeOfTeamRed'] ?? 0) == 1;
         _ppeRed = (data['ppeRed'] ?? 0) == 1;
+        // Restore checkbox states from saved PPE text
+        _safetyCone = !ppeText.contains('SAFETY CONE');
+        _safetySignage = !ppeText.contains('SIGNBOARD');
       });
     } else {
       _typeController.text = '';
-      _ppeController.text = '';
       setState(() {
         _typeOfTeamRed = false;
         _ppeRed = false;
+        _safetyCone = true;
+        _safetySignage = true;
       });
     }
+    await _calculateAttendance(team);
     await _calculateCompetency(team);
+  }
+
+  /// Queries all profiling persons for [team] and counts how many are absent.
+  Future<void> _calculateAttendance(Team team) async {
+    final db = await DatabaseHelper().database;
+    final rows = await db.query(
+      'profiling_team',
+      where: 'teamId = ?',
+      whereArgs: [team.id],
+    );
+
+    int absent = 0;
+    for (final row in rows) {
+      final attendance = (row['attendance'] as String? ?? '').toLowerCase();
+      if (attendance == 'not present') {
+        absent++;
+      }
+    }
+
+    setState(() {
+      _absentCount = absent;
+      if (absent > 0) {
+        _typeOfTeamRed = true;
+        _manpowerWarning =
+            'NOT MEET MINIMUM MANPOWER REQUIREMENT. $absent PERSON NOT PRESENT DURING TEAM INSPECTION';
+      } else {
+        _typeOfTeamRed = false;
+        _manpowerWarning = '';
+      }
+    });
+    _updatePpeState();
+    _saveTeamSummary();
+  }
+
+  /// Builds the PPE text and red flag from the two checkboxes.
+  void _updatePpeState() {
+    final issues = <String>[];
+    if (!_safetyCone) {
+      issues.add('SAFETY CONE DID NOT MEET MINIMUM REQUIREMENT.');
+    }
+    if (!_safetySignage) {
+      issues.add('SIGNBOARD NOT COMPLY TO SAFETY SIGNAGE.');
+    }
+    setState(() {
+      _ppeRed = issues.isNotEmpty;
+    });
+  }
+
+  /// Returns the PPE text to persist based on checkbox state.
+  String _buildPpeText() {
+    final issues = <String>[];
+    if (!_safetyCone) {
+      issues.add('SAFETY CONE DID NOT MEET MINIMUM REQUIREMENT.');
+    }
+    if (!_safetySignage) {
+      issues.add('SIGNBOARD NOT COMPLY TO SAFETY SIGNAGE.');
+    }
+    return issues.join('\n');
   }
 
   /// Queries all profiling persons for [team] and checks that at least 2
@@ -303,7 +370,7 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
     final row = {
       'teamId': id,
       'typeOfTeam': _typeController.text,
-      'ppe': _ppeController.text,
+      'ppe': _buildPpeText(),
       'competency': _competency,
       'typeOfTeamRed': _typeOfTeamRed ? 1 : 0,
       'ppeRed': _ppeRed ? 1 : 0,
@@ -414,22 +481,113 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
                 onChanged: (val) => _autoSave(),
               ),
             ),
+            // Manpower attendance status
+            if (_absentCount > 0) ...[
+              const SizedBox(height: 12),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade300),
+                ),
+                child: Row(
+                  children: [
+                    Icon(Icons.warning_amber_rounded, color: Colors.red.shade700, size: 18),
+                    const SizedBox(width: 8),
+                    Expanded(
+                      child: Text(
+                        _manpowerWarning,
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text('PPE', style: TextStyle(fontWeight: FontWeight.bold)),
-            TextFormField(
-              controller: _ppeController,
-              maxLength: 255,
-              maxLines: 3,
-              decoration: InputDecoration(
-                border: OutlineInputBorder(
-                  borderRadius: BorderRadius.circular(12),
-                  borderSide: BorderSide.none,
-                ),
-                filled: true,
-                fillColor: Colors.white,
+            const SizedBox(height: 8),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(12),
               ),
-              onChanged: (val) => _autoSave(),
+              child: Column(
+                children: [
+                  CheckboxListTile(
+                    title: const Text('Meet safety cone requirement'),
+                    value: _safetyCone,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: Colors.green,
+                    onChanged: (val) {
+                      setState(() => _safetyCone = val ?? true);
+                      _updatePpeState();
+                      _autoSave();
+                    },
+                  ),
+                  CheckboxListTile(
+                    title: const Text('Comply to safety signage'),
+                    value: _safetySignage,
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    controlAffinity: ListTileControlAffinity.leading,
+                    activeColor: Colors.green,
+                    onChanged: (val) {
+                      setState(() => _safetySignage = val ?? true);
+                      _updatePpeState();
+                      _autoSave();
+                    },
+                  ),
+                ],
+              ),
             ),
+            if (_ppeRed) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: double.infinity,
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(color: Colors.red.shade300),
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (!_safetyCone)
+                      Padding(
+                        padding: const EdgeInsets.only(bottom: 4),
+                        child: Text(
+                          'SAFETY CONE DID NOT MEET MINIMUM REQUIREMENT.',
+                          style: TextStyle(
+                            fontSize: 12,
+                            color: Colors.red.shade700,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    if (!_safetySignage)
+                      Text(
+                        'SIGNBOARD NOT COMPLY TO SAFETY SIGNAGE.',
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+            ],
             const SizedBox(height: 16),
             const Text('Competency',
                 style: TextStyle(fontWeight: FontWeight.bold)),
@@ -502,23 +660,6 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
                     ),
                 ],
               ),
-            ),
-            const SizedBox(height: 16),
-            CheckboxListTile(
-              title: const Text('Highlight TYPE OF TEAM as red in PDF'),
-              value: _typeOfTeamRed,
-              onChanged: (val) {
-                setState(() => _typeOfTeamRed = val ?? false);
-                _autoSave();
-              },
-            ),
-            CheckboxListTile(
-              title: const Text('Highlight PPE as red in PDF'),
-              value: _ppeRed,
-              onChanged: (val) {
-                setState(() => _ppeRed = val ?? false);
-                _autoSave();
-              },
             ),
             const SizedBox(height: 24),
             if (_showSaved) AnimatedSavedRow(opacity: _savedOpacity),

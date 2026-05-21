@@ -11,6 +11,8 @@ class Document {
   final String location;
   final String auditor;
   final String templateId; // Links to the audit template used
+  final String status; // draft, pending, approved, rejected
+  final String rejectionRemark;
 
   Document({
     required this.id,
@@ -25,6 +27,8 @@ class Document {
     required this.location,
     required this.auditor,
     this.templateId = 'default_vmm_template',
+    this.status = 'draft',
+    this.rejectionRemark = '',
   });
 
   Map<String, dynamic> toMap() {
@@ -41,6 +45,8 @@ class Document {
       'location': location,
       'auditor': auditor,
       'templateId': templateId,
+      'status': status,
+      'rejectionRemark': rejectionRemark,
     };
   }
 
@@ -58,6 +64,8 @@ class Document {
       location: map['location'] ?? '',
       auditor: map['auditor'] ?? '',
       templateId: map['templateId'] as String? ?? 'default_vmm_template',
+      status: map['status'] as String? ?? 'draft',
+      rejectionRemark: map['rejectionRemark'] as String? ?? '',
     );
   }
 
