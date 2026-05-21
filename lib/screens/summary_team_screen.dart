@@ -68,7 +68,6 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
   OverlayEntry? _typeOverlayEntry;
   List<String> _typeOptions = [];
   List<String> _filteredTypeOptions = [];
-  String _documentType = '';
   String _documentStatus = 'draft';
 
   final GlobalKey<ScaffoldState> _scaffoldKey = GlobalKey<ScaffoldState>();
@@ -109,7 +108,6 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
       final createdDate = result.first['createdDate'] as String?;
       final status = result.first['status'] as String? ?? 'draft';
       setState(() {
-        _documentType = type;
         _documentStatus = status;
         _typeOptions = [
           '$type FIBER OVERHEAD',

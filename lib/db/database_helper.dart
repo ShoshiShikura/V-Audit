@@ -850,7 +850,7 @@ class DatabaseHelper {
 
   Future<User?> getUser(String id) async {
     final db = await database;
-    final result = await db.query('users', where: 'id = ?', whereArgs: [id]);
+    final result = await db.query('users', where: 'LOWER(id) = LOWER(?)', whereArgs: [id]);
     if (result.isNotEmpty) {
       // Decrypt sensitive user data
       final decryptedData =
@@ -889,8 +889,13 @@ class DatabaseHelper {
     required String fullName,
   }) async {
     final db = await database;
+    
+    // Maintain the original ID case if the user already exists locally
+    final existingUser = await getUser(id);
+    final finalId = existingUser?.id ?? id;
+
     final userMap = {
-      'id': id,
+      'id': finalId,
       'password': hashedPassword,
       'role': SessionManager.normalizeRole(role),
       'fullName': fullName,

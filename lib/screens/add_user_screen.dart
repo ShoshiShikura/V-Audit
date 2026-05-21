@@ -53,7 +53,7 @@ class _AddUserScreenState extends State<AddUserScreen> {
     }
     setState(() => _checkingUsername = true);
     final users = await _dbHelper.getUsers();
-    final exists = users.any((u) => u.id == id);
+    final exists = users.any((u) => u.id.toLowerCase() == id.toLowerCase());
     setState(() {
       _usernameExists = exists;
       _checkingUsername = false;
@@ -77,6 +77,22 @@ class _AddUserScreenState extends State<AddUserScreen> {
       final password = _passwordController.text.trim();
       final role = _selectedRole!;
       final fullName = _fullNameController.text.trim();
+
+      // Check for duplicated username (case-insensitive)
+      final existingUser = await _dbHelper.getUser(id);
+      if (existingUser != null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('User with this ID already exists (case-insensitive).'),
+              backgroundColor: Colors.red,
+            ),
+          );
+          setState(() => _isSaving = false);
+        }
+        return;
+      }
+
       final hashedPassword = sha256.convert(utf8.encode(password)).toString();
       final newUser = User(
         id: id,

@@ -122,20 +122,22 @@ class _LoginScreenState extends State<LoginScreen> {
       );
       final fullName = (online.fullName ?? (user?.fullName ?? '')).trim();
 
+      final finalId = user?.id ?? id;
+
       // Upsert locally so subsequent logins are offline-capable.
       await _dbHelper.upsertActivatedUser(
-        id: id,
+        id: finalId,
         hashedPassword: hashedPassword,
         role: role,
         fullName: fullName,
       );
-      await SessionManager.saveSession(id, role);
+      await SessionManager.saveSession(finalId, role);
       if (!mounted) return;
 
       Navigator.pushReplacement(
         context,
         MaterialPageRoute(
-          builder: (_) => DashboardScreen(role: role, userId: id),
+          builder: (_) => DashboardScreen(role: role, userId: finalId),
         ),
       );
     } finally {
