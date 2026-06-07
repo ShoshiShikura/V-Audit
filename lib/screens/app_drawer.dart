@@ -394,7 +394,7 @@ class AppDrawer extends StatelessWidget {
                     leading: Icon(Icons.business,
                         color: iconColor('company_name') ??
                             const Color(0xFF4B1EFF)),
-                    title: Text('Company Name',
+                    title: Text('Physical Inspection',
                         style: TextStyle(
                             fontWeight: FontWeight.w600,
                             color: textColor('company_name'))),
@@ -459,17 +459,6 @@ class AppDrawer extends StatelessWidget {
                             );
                           }
                         },
-                ),
-                const SizedBox(height: 16),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 24),
-                  child: Text(
-                    'v1.1.6',
-                    style: TextStyle(
-                      color: Colors.grey.shade400,
-                      fontSize: 12,
-                    ),
-                  ),
                 ),
                 const SizedBox(height: 8),
                 Padding(

@@ -1,0 +1,197 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <title>V-Audit ERD Diagram</title>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@10/dist/mermaid.min.js"></script>
+  <style>
+    body {
+      background: #ffffff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      padding: 32px;
+      font-family: Arial, sans-serif;
+    }
+    h2 {
+      font-size: 18px;
+      margin-bottom: 4px;
+      color: #1a1a2e;
+    }
+    p {
+      font-size: 13px;
+      color: #555;
+      margin-bottom: 24px;
+    }
+    .mermaid {
+      width: 100%;
+      max-width: 1400px;
+    }
+  </style>
+</head>
+<body>
+  <h2>Figure 3.16 — V-Audit Entity Relationship Diagram</h2>
+  <p>Open this file in any browser. Right-click the diagram → Save Image As, or use a screenshot tool to capture it for your thesis.</p>
+
+  <div class="mermaid">
+erDiagram
+
+    users {
+        TEXT id PK
+        TEXT password
+        TEXT role
+        TEXT fullName
+        INTEGER activated
+    }
+
+    documents {
+        TEXT id PK
+        TEXT title
+        TEXT description
+        TEXT type
+        TEXT createdDate
+        TEXT lastModified
+        TEXT fileName
+        INTEGER isDraft
+        TEXT ownerId FK
+        TEXT location
+        TEXT auditor
+        TEXT templateId FK
+        TEXT status
+        TEXT rejectionRemark
+        INTEGER isRead
+    }
+
+    audit_templates {
+        TEXT id PK
+        TEXT name
+        TEXT description
+        INTEGER isPublished
+        INTEGER isActive
+        TEXT createdDate
+        TEXT lastModified
+    }
+
+    template_items {
+        TEXT id PK
+        TEXT templateId FK
+        TEXT section
+        TEXT category
+        TEXT label
+        TEXT itemType
+        INTEGER isMandatory
+        INTEGER sortOrder
+        INTEGER isDefault
+        TEXT defaultKey
+    }
+
+    companies {
+        TEXT id PK
+        TEXT name
+    }
+
+    teams {
+        TEXT id PK
+        TEXT documentId FK
+        TEXT type
+        TEXT label
+        INTEGER number
+    }
+
+    profiling_team {
+        TEXT id PK
+        TEXT documentId FK
+        TEXT teamId FK
+        INTEGER personIndex
+        TEXT name
+        TEXT ic
+        TEXT attendance
+        TEXT ntsmpDate
+        TEXT aespDate
+        TEXT agtesDate
+        TEXT csmeDate
+        TEXT oykDate
+        TEXT poleProficiency
+        TEXT ca2aDate
+        TEXT ca2cDate
+    }
+
+    summary_team {
+        TEXT teamId PK
+        TEXT typeOfTeam
+        TEXT ppe
+        TEXT competency
+        INTEGER typeOfTeamRed
+        INTEGER ppeRed
+    }
+
+    company_name {
+        TEXT teamId PK
+        TEXT attachmentPath
+        TEXT capturedAt
+        REAL latitude
+        REAL longitude
+        REAL altitude
+        TEXT remark
+        TEXT members
+    }
+
+    finding_summary {
+        TEXT documentId PK
+        TEXT remark
+    }
+
+    team_images {
+        TEXT teamId PK
+        TEXT imagePath
+    }
+
+    workers {
+        TEXT userId PK
+        TEXT name
+        TEXT ic
+        TEXT companies
+        TEXT status
+    }
+
+    custom_field_data {
+        TEXT id PK
+        TEXT documentId FK
+        TEXT teamId FK
+        INTEGER personIndex
+        TEXT templateItemId FK
+        TEXT value
+    }
+
+    users ||--o{ documents : "owns (1:N)"
+    audit_templates ||--o{ documents : "defines structure for (1:N)"
+    audit_templates ||--o{ template_items : "configures (1:N)"
+    documents ||--o{ teams : "contains (1:N)"
+    documents ||--o| finding_summary : "concludes (1:1)"
+    documents ||--o{ profiling_team : "recorded in (1:N)"
+    documents ||--o{ custom_field_data : "stores (1:N)"
+    teams ||--o{ profiling_team : "profiles workers in (1:N)"
+    teams ||--o| summary_team : "summarised by (1:1)"
+    teams ||--o| company_name : "evidenced by (1:1)"
+    teams ||--o| team_images : "imaged by (1:1)"
+    teams ||--o{ custom_field_data : "scoped to (1:N)"
+    template_items ||--o{ custom_field_data : "populated by (1:N)"
+  </div>
+
+  <script>
+    mermaid.initialize({
+      startOnLoad: true,
+      theme: 'default',
+      er: {
+        diagramPadding: 30,
+        layoutDirection: 'TB',
+        minEntityWidth: 100,
+        minEntityHeight: 75,
+        entityPadding: 15,
+        useMaxWidth: true
+      }
+    });
+  </script>
+</body>
+</html>

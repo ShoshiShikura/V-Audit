@@ -11,6 +11,7 @@ import '../services/data_encryption_service.dart';
 
 class PdfService {
   Future<Uint8List> generateFullAuditPdf(String documentId) async {
+    final stopwatch = Stopwatch()..start();
     final db = await DatabaseHelper().database;
     final result = await db.query('documents',
         where: 'id = ?', whereArgs: [documentId], limit: 1);
@@ -710,7 +711,14 @@ class PdfService {
       ),
     );
 
-    return pdf.save();
+    final pdfBytes = await pdf.save();
+    stopwatch.stop();
+    print('\n================ PERFORMANCE METRIC ================');
+    print('Task: Full Audit PDF Generation');
+    print('Document ID: $documentId');
+    print('Execution Time: ${stopwatch.elapsedMilliseconds} ms (${stopwatch.elapsedMilliseconds / 1000} seconds)');
+    print('====================================================\n');
+    return pdfBytes;
   }
 
   String _formatDate(DateTime date) {
