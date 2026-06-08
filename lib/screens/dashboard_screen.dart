@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:flutter/material.dart';
 import '../services/backend_service.dart';
 import '../services/session_manager.dart';
@@ -479,6 +480,9 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _documents = [];
   List<Map<String, dynamic>> _filteredDocuments = [];
   String _sortBy = 'recent'; // 'recent' or 'oldest'
+  
+  // Auto-sync timer
+  Timer? _syncTimer;
 
   // Filter state
   List<String> _selectedTeamTypes = [];
@@ -494,10 +498,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadDocuments();
     _searchController.addListener(_filterDocuments);
+    
+    // Auto-sync every 15 seconds
+    _syncTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
+      await BackendService.syncAuditDataToXampp();
+      bool newPulls = await BackendService.pullAuditDataFromXampp(widget.userId);
+      if (newPulls && mounted) {
+        _loadDocuments();
+      }
+    });
   }
 
   @override
   void dispose() {
+    _syncTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }

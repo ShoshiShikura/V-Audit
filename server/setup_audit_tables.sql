@@ -58,3 +58,10 @@ CREATE TABLE IF NOT EXISTS company_name (
   remark TEXT,
   members TEXT
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+
+-- 5. Create companies Table
+-- Stores the list of companies managed by the administrator
+CREATE TABLE IF NOT EXISTS companies (
+  id VARCHAR(100) PRIMARY KEY,
+  name VARCHAR(255) UNIQUE NOT NULL
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;

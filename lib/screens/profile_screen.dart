@@ -5,6 +5,7 @@ import '../services/session_manager.dart';
 import 'app_drawer.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import '../services/backend_service.dart';
 
 class ProfileScreen extends StatefulWidget {
   final String userId;
@@ -232,6 +233,18 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
       // Reload user data from DB to stay in sync
       final refreshedUser = await db.getUser(userId);
+
+      // Best-effort sync to remote server so XAMPP doesn't overwrite it later
+      try {
+        await BackendService.upsertUserToServer(
+          id: userId,
+          passwordSha256Hex: refreshedUser?.password ?? newPasswordHash,
+          role: refreshedUser?.role ?? _userData?.role ?? widget.role,
+          fullName: refreshedUser?.fullName ?? _fullNameController.text.trim(),
+        );
+      } catch (e) {
+        // Ignore network errors, the local SQLite database is already updated
+      }
 
       setState(() {
         _userData = refreshedUser ?? User(

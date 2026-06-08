@@ -70,7 +70,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
 
   // For image picker
   final ImagePicker _picker = ImagePicker();
-  static const int maxFileSizeBytes = 5 * 1024 * 1024; // 5MB recommended
+  static const int maxFileSizeBytes = 20 * 1024 * 1024; // 20MB recommended
 
   Future<Position> _requireCurrentPosition() async {
     final serviceEnabled = await Geolocator.isLocationServiceEnabled();
@@ -192,7 +192,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
         coordPainter.height +
         lineSpacing +
         altPainter.height +
-        pad;
+        pad + lineSpacing; // add lineSpacing for the separator line
     final stampY = h - stampH;
 
     // --- Create canvas ---
@@ -653,7 +653,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
                       if (!mounted) return;
                       ScaffoldMessenger.of(this.context).showSnackBar(
                         const SnackBar(
-                          content: Text('File too large. Max size is 5MB.'),
+                          content: Text('File too large. Max size is 20MB.'),
                         ),
                       );
                       return;
@@ -923,7 +923,7 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
                             File(_attachmentPath!),
                             width: 180,
                             height: 180,
-                            fit: BoxFit.cover,
+                            fit: BoxFit.contain,
                           ),
                         )
                       : Container(

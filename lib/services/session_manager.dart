@@ -56,6 +56,9 @@ class SessionManager {
   }
 
   static Future<void> clearSession() async {
-    await _storage.deleteAll();
+    await _storage.delete(key: _keyId);
+    await _storage.delete(key: _keyRole);
+    await _storage.delete(key: _keyToken);
+    await _storage.delete(key: _keyLoginAt);
   }
 }

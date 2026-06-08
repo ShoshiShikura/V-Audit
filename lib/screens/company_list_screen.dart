@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import 'dashboard_screen.dart';
+import '../services/backend_service.dart';
 
 class CompanyListScreen extends StatefulWidget {
   final String userId;
@@ -91,6 +92,12 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
       await DatabaseHelper().addCompany(companyName);
       _newCompanyController.clear();
       await _loadCompanies();
+      
+      // Sync the new company to the backend
+      try {
+        await BackendService.syncAuditDataToXampp();
+      } catch (_) {}
+
       if (mounted && currentContext.mounted) {
         ScaffoldMessenger.of(currentContext).showSnackBar(
           SnackBar(content: Text('Company "$companyName" added successfully')),
@@ -176,6 +183,12 @@ class _CompanyListScreenState extends State<CompanyListScreen> {
       try {
         await DatabaseHelper().deleteCompany(companyName);
         await _loadCompanies();
+        
+        // Sync the deleted company state to backend
+        try {
+          await BackendService.deleteCompanyFromServer(companyName);
+        } catch (_) {}
+
         if (mounted && currentContext.mounted) {
           ScaffoldMessenger.of(currentContext).showSnackBar(
             SnackBar(content: Text('Company "$companyName" deleted')),

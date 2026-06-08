@@ -2,9 +2,19 @@ import 'package:flutter/material.dart';
 import 'screens/splash_screen.dart';
 import 'db/database_helper.dart';
 
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'services/backend_service.dart';
+
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
-  // await _populatePresetWorkers(); // Preset worker population is now disabled but can be re-enabled if needed
+  
+  // Load custom Server IP if saved
+  const storage = FlutterSecureStorage();
+  final savedUrl = await storage.read(key: 'server_base_url');
+  if (savedUrl != null && savedUrl.isNotEmpty) {
+    BackendService.setBaseUrl(savedUrl);
+  }
+  
   runApp(const VAuditApp());
 }
 

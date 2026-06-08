@@ -90,7 +90,55 @@ try {
             }
         }
 
-        // 3. Sync Finding Summary
+        // 3. Sync Teams
+        if (isset($input['teams']) && is_array($input['teams'])) {
+            $stmt = $pdo->prepare("
+                INSERT INTO teams (id, documentId, type, label, number) 
+                VALUES (?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                type=VALUES(type), label=VALUES(label), number=VALUES(number)
+            ");
+            foreach ($input['teams'] as $team) {
+                $stmt->execute([
+                    $team['id'] ?? null,
+                    $team['documentId'] ?? null,
+                    $team['type'] ?? null,
+                    $team['label'] ?? null,
+                    $team['number'] ?? null
+                ]);
+            }
+        }
+
+        // 4. Sync Profiling Team
+        if (isset($input['profiling_team']) && is_array($input['profiling_team'])) {
+            $stmt = $pdo->prepare("
+                INSERT INTO profiling_team (id, documentId, teamId, personIndex, name, ic, attendance, ntsmpDate, aespDate, agtesDate, csmeDate, oykDate, poleProficiency, ca2aDate, ca2cDate) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                ON DUPLICATE KEY UPDATE 
+                name=VALUES(name), ic=VALUES(ic), attendance=VALUES(attendance), ntsmpDate=VALUES(ntsmpDate), aespDate=VALUES(aespDate), agtesDate=VALUES(agtesDate), csmeDate=VALUES(csmeDate), oykDate=VALUES(oykDate), poleProficiency=VALUES(poleProficiency), ca2aDate=VALUES(ca2aDate), ca2cDate=VALUES(ca2cDate)
+            ");
+            foreach ($input['profiling_team'] as $pt) {
+                $stmt->execute([
+                    $pt['id'] ?? null,
+                    $pt['documentId'] ?? null,
+                    $pt['teamId'] ?? null,
+                    $pt['personIndex'] ?? null,
+                    $pt['name'] ?? null,
+                    $pt['ic'] ?? null,
+                    $pt['attendance'] ?? null,
+                    $pt['ntsmpDate'] ?? null,
+                    $pt['aespDate'] ?? null,
+                    $pt['agtesDate'] ?? null,
+                    $pt['csmeDate'] ?? null,
+                    $pt['oykDate'] ?? null,
+                    $pt['poleProficiency'] ?? null,
+                    $pt['ca2aDate'] ?? null,
+                    $pt['ca2cDate'] ?? null
+                ]);
+            }
+        }
+
+        // 5. Sync Finding Summary
         if (isset($input['finding_summary']) && is_array($input['finding_summary'])) {
             $stmt = $pdo->prepare("
                 INSERT INTO finding_summary (documentId, remark) 
@@ -149,6 +197,22 @@ try {
                     $alt,
                     $cn['remark'] ?? null,
                     $cn['members'] ?? null
+                ]);
+            }
+        }
+
+        // 6. Sync Companies
+        if (isset($input['companies']) && is_array($input['companies'])) {
+            $stmt = $pdo->prepare("
+                INSERT INTO companies (id, name) 
+                VALUES (?, ?)
+                ON DUPLICATE KEY UPDATE 
+                name=VALUES(name)
+            ");
+            foreach ($input['companies'] as $comp) {
+                $stmt->execute([
+                    $comp['id'] ?? null,
+                    $comp['name'] ?? null
                 ]);
             }
         }

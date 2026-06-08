@@ -15,6 +15,7 @@ import '../services/data_encryption_service.dart';
 import '../services/session_manager.dart';
 import 'package:crypto/crypto.dart';
 import 'dart:convert';
+import 'package:path_provider/path_provider.dart';
 
 import 'package:flutter/foundation.dart';
 
@@ -1481,6 +1482,13 @@ class DatabaseHelper {
     // 1. Documents
     final docs = await db.query('documents');
     data['documents'] = docs;
+
+    // 1.5 Teams and Profiling
+    final teams = await db.query('teams');
+    data['teams'] = teams;
+    
+    final profiling = await db.query('profiling_team');
+    data['profiling_team'] = profiling;
     
     // 2. Audit Templates
     final templates = await db.query('audit_templates');
@@ -1498,6 +1506,10 @@ class DatabaseHelper {
     final evidence = await db.query('company_name');
     data['company_name'] = evidence;
 
+    // 6. Companies List
+    final companies = await db.query('companies');
+    data['companies'] = companies;
+
     return data;
   }
   
@@ -1514,6 +1526,84 @@ class DatabaseHelper {
   Future<void> updateEvidencePath(String teamId, String serverPath) async {
     final db = await database;
     await db.update('company_name', {'attachmentPath': serverPath}, where: 'teamId = ?', whereArgs: [teamId]);
+  }
+
+  /// Helper to import or overwrite raw audit data from XAMPP or File Import.
+  Future<void> importRawAuditData(Map<String, dynamic> data, String currentUserId) async {
+    final db = await database;
+    final meta = data['meta'] ?? {};
+    final docMap = data['document'];
+    final docId = meta['docId'] ?? docMap['id'];
+
+    final teams = data['teams'] as List? ?? [];
+    final profilingData = data['profilingData'] as List? ?? [];
+    final summaryData = data['summaryData'] as List? ?? [];
+    final companyNameData = data['companyNameData'] as List? ?? [];
+    final findingData = data['findingData'] as List? ?? [];
+    final imageFiles = data['imageFiles'] as Map<String, dynamic>? ?? {};
+
+    await db.transaction((txn) async {
+      // Delete existing related data if replacing
+      final oldTeams = await txn.query('teams', where: 'documentId = ?', whereArgs: [docId]);
+      final oldTeamIds = oldTeams.map((t) => t['id'] as String).toList();
+      if (oldTeamIds.isNotEmpty) {
+        final idList = List.filled(oldTeamIds.length, '?').join(',');
+        await txn.delete('profiling_team', where: 'teamId IN ($idList)', whereArgs: oldTeamIds);
+        await txn.delete('summary_team', where: 'teamId IN ($idList)', whereArgs: oldTeamIds);
+        await txn.delete('company_name', where: 'teamId IN ($idList)', whereArgs: oldTeamIds);
+      }
+      await txn.delete('teams', where: 'documentId = ?', whereArgs: [docId]);
+      await txn.delete('finding_summary', where: 'documentId = ?', whereArgs: [docId]);
+      await txn.delete('documents', where: 'id = ?', whereArgs: [docId]);
+
+      // Insert new data
+      final doc = Document.fromMap(docMap);
+      final newDoc = Document(
+        id: doc.id,
+        title: doc.title,
+        description: doc.description,
+        type: doc.type,
+        createdDate: doc.createdDate,
+        lastModified: doc.lastModified,
+        fileName: doc.fileName,
+        isDraft: doc.isDraft,
+        ownerId: currentUserId,
+        location: doc.location,
+        auditor: doc.auditor,
+      );
+      await txn.insert('documents', newDoc.toMap());
+
+      for (final team in teams) {
+        await txn.insert('teams', team);
+      }
+      for (final profile in profilingData) {
+        await txn.insert('profiling_team', profile);
+      }
+      for (final summary in summaryData) {
+        await txn.insert('summary_team', summary);
+      }
+      for (final finding in findingData) {
+        await txn.insert('finding_summary', finding);
+      }
+
+      for (final company in companyNameData) {
+        final teamId = company['teamId'] as String;
+        final imageFile = imageFiles[teamId];
+        if (imageFile != null) {
+          final fileName = imageFile['fileName'] as String;
+          final imageData = base64Decode(imageFile['data'] as String);
+          final appDir = await getApplicationDocumentsDirectory();
+          final imagesDir = Directory('${appDir.path}/audit_images');
+          if (!await imagesDir.exists()) {
+            await imagesDir.create(recursive: true);
+          }
+          final imagePath = '${imagesDir.path}/$fileName';
+          await File(imagePath).writeAsBytes(imageData);
+          company['attachmentPath'] = imagePath;
+        }
+        await txn.insert('company_name', company);
+      }
+    });
   }
 }
 

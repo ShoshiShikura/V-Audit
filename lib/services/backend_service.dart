@@ -19,8 +19,14 @@ class OnlineAuthResult {
 }
 
 class BackendService {
-  // Android emulator → your PC's localhost
-  static const String _baseUrl = 'http://10.0.2.2/vaudit_api';
+  // Default fallback
+  static String _baseUrl = 'http://10.70.213.77/vaudit_api';
+
+  static void setBaseUrl(String url) {
+    _baseUrl = url;
+  }
+
+  static String get baseUrl => _baseUrl;
 
   /// First-time verification against a remote MySQL-backed API.
   ///
@@ -37,6 +43,17 @@ class BackendService {
         url,
         body: {'id': id, 'password': password},
       );
+
+      if (response.statusCode == 401) {
+        String msg = 'Incorrect password';
+        try {
+          final decoded = jsonDecode(response.body);
+          if (decoded is Map && decoded['message'] != null) {
+            msg = decoded['message'].toString();
+          }
+        } catch (_) {}
+        return OnlineAuthResult(ok: false, message: msg);
+      }
 
       if (response.statusCode != 200) {
         return OnlineAuthResult(
@@ -190,6 +207,26 @@ class BackendService {
     }
   }
 
+  // ── Company Management ─────────────────────────────────────────────
+
+  /// Deletes a company from the central MySQL database on XAMPP.
+  static Future<bool> deleteCompanyFromServer(String companyName) async {
+    final url = Uri.parse('$_baseUrl/delete_company.php');
+    try {
+      final response = await http.post(
+        url,
+        body: {'name': companyName},
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['ok'] == true || decoded['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Synchronization to XAMPP ─────────────────────────────────────────
 
   /// Pushes all offline documents, templates, and evidence metadata to XAMPP.
@@ -198,17 +235,47 @@ class BackendService {
     try {
       final data = await DatabaseHelper().getAllDataForSync();
 
-      final response = await http.post(
-        url,
-        headers: {'Content-Type': 'application/json'},
-        body: jsonEncode(data),
-      ).timeout(const Duration(seconds: 15));
+      final response = await http
+          .post(
+            url,
+            headers: {'Content-Type': 'application/json'},
+            body: jsonEncode(data),
+          )
+          .timeout(const Duration(seconds: 15));
 
       if (response.statusCode != 200) return false;
       final decoded = jsonDecode(response.body);
       return decoded['ok'] == true;
     } catch (e) {
       debugPrint('Sync Audit Error: $e');
+      return false;
+    }
+  }
+
+  /// Pulls all audit data from XAMPP and imports it to the local SQLite DB.
+  static Future<bool> pullAuditDataFromXampp(String currentUserId) async {
+    final url = Uri.parse('$_baseUrl/pull_audit.php');
+    try {
+      final response = await http.get(url).timeout(const Duration(seconds: 15));
+      if (response.statusCode != 200) return false;
+
+      final decoded = jsonDecode(response.body);
+      if (decoded['ok'] == true && decoded['data'] != null) {
+        final rawJsonList = decoded['data'] as List;
+        for (var rawJsonStr in rawJsonList) {
+          try {
+            // Check if it's a string, then parse it, or if it's already a map
+            final Map<String, dynamic> docData = rawJsonStr is String ? jsonDecode(rawJsonStr) : rawJsonStr;
+            await DatabaseHelper().importRawAuditData(docData, currentUserId);
+          } catch (e) {
+            debugPrint('Failed to process pulled document: $e');
+          }
+        }
+        return true;
+      }
+      return false;
+    } catch (e) {
+      debugPrint('Sync Pull Error: $e');
       return false;
     }
   }
@@ -232,8 +299,9 @@ class BackendService {
           await http.MultipartFile.fromPath('evidence_image', file.path),
         );
 
-        final response = await request.send().timeout(const Duration(seconds: 15));
-        
+        final response =
+            await request.send().timeout(const Duration(seconds: 15));
+
         if (response.statusCode == 200) {
           final resBody = await response.stream.bytesToString();
           final decoded = jsonDecode(resBody);

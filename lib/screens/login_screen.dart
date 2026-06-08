@@ -6,6 +6,7 @@ import 'dashboard_screen.dart';
 import 'forgot_password_screen.dart';
 import '../services/backend_service.dart';
 import '../services/session_manager.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
 class LoginHeader extends StatelessWidget {
   const LoginHeader({super.key});
@@ -112,7 +113,12 @@ class _LoginScreenState extends State<LoginScreen> {
           setState(() => _passwordError =
               'First-time login requires internet connection for verification.');
         } else {
-          setState(() => _idError = online.message ?? 'User not found.');
+          final msg = online.message?.toLowerCase() ?? '';
+          if (msg.contains('password') || msg.contains('credentials')) {
+            setState(() => _passwordError = online.message ?? 'Incorrect password.');
+          } else {
+            setState(() => _idError = online.message ?? 'User not found.');
+          }
         }
         return;
       }
@@ -145,10 +151,56 @@ class _LoginScreenState extends State<LoginScreen> {
     }
   }
 
+  void _showServerSettings() {
+    final TextEditingController urlController = TextEditingController(text: BackendService.baseUrl);
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Server Configuration'),
+        content: TextField(
+          controller: urlController,
+          decoration: const InputDecoration(
+            labelText: 'Server IP / Base URL',
+            hintText: 'http://10.70.213.77/vaudit_api',
+          ),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: const Text('Cancel'),
+          ),
+          ElevatedButton(
+            onPressed: () async {
+              final newUrl = urlController.text.trim();
+              if (newUrl.isNotEmpty) {
+                BackendService.setBaseUrl(newUrl);
+                const storage = FlutterSecureStorage();
+                await storage.write(key: 'server_base_url', value: newUrl);
+              }
+              if (mounted) Navigator.pop(context);
+            },
+            child: const Text('Save'),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: const Color(0xFFFDF7F5),
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.settings, color: Colors.grey),
+            onPressed: _showServerSettings,
+            tooltip: 'Server Configuration',
+          ),
+        ],
+      ),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
