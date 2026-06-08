@@ -365,12 +365,6 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
     if (_selectedTeam == null) return;
     final db = await DatabaseHelper().database;
     final id = _selectedTeam!.id;
-    final result = await db.query(
-      'summary_team',
-      where: 'teamId = ?',
-      whereArgs: [id],
-      limit: 1,
-    );
     final row = {
       'teamId': id,
       'typeOfTeam': _typeController.text,
@@ -379,16 +373,11 @@ class _SummaryTeamScreenState extends State<SummaryTeamScreen> {
       'typeOfTeamRed': _typeOfTeamRed ? 1 : 0,
       'ppeRed': _ppeRed ? 1 : 0,
     };
-    if (result.isEmpty) {
-      await db.insert(
-        'summary_team',
-        row,
-        conflictAlgorithm: ConflictAlgorithm.replace, // Add this
-      );
-    } else {
-      await db
-          .update('summary_team', row, where: 'teamId = ?', whereArgs: [id]);
-    }
+    await db.insert(
+      'summary_team',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   void _autoSave() {

@@ -3,7 +3,6 @@ import 'package:intl/intl.dart';
 import '../db/database_helper.dart';
 import '../models/audit_template.dart';
 import 'edit_template_screen.dart';
-import 'app_drawer.dart';
 
 class ManageTemplatesScreen extends StatefulWidget {
   final String userId;
@@ -75,7 +74,8 @@ class _ManageTemplatesScreenState extends State<ManageTemplatesScreen> {
   Future<void> _setActiveTemplate(AuditTemplate template) async {
     if (!template.isPublished) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Only published templates can be set as active.')),
+        const SnackBar(
+            content: Text('Only published templates can be set as active.')),
       );
       return;
     }
@@ -94,7 +94,8 @@ class _ManageTemplatesScreenState extends State<ManageTemplatesScreen> {
     if (template.isActive) {
       ScaffoldMessenger.of(currentContext).showSnackBar(
         const SnackBar(
-          content: Text('Cannot delete the active template. Set another template as active first.'),
+          content: Text(
+              'Cannot delete the active template. Set another template as active first.'),
         ),
       );
       return;
@@ -189,21 +190,14 @@ class _ManageTemplatesScreenState extends State<ManageTemplatesScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      drawer: AppDrawer(
-        currentPage: 'templates',
-        userId: widget.userId,
-        role: widget.role,
-      ),
       appBar: AppBar(
         title: const Text('Audit Templates'),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0.5,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       backgroundColor: const Color(0xFFF7F8FA),
@@ -311,7 +305,9 @@ class _TemplateCard extends StatelessWidget {
                   ),
                   child: Icon(
                     template.isActive ? Icons.check_circle : Icons.article,
-                    color: template.isActive ? Colors.green : const Color(0xFF4B1EFF),
+                    color: template.isActive
+                        ? Colors.green
+                        : const Color(0xFF4B1EFF),
                     size: 24,
                   ),
                 ),
@@ -377,8 +373,8 @@ class _TemplateCard extends StatelessWidget {
                     tooltip: 'Set as Active',
                   ),
                 IconButton(
-                  icon:
-                      const Icon(Icons.delete_outline, color: Colors.red, size: 20),
+                  icon: const Icon(Icons.delete_outline,
+                      color: Colors.red, size: 20),
                   onPressed: onDelete,
                   tooltip: 'Delete',
                 ),

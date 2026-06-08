@@ -523,11 +523,14 @@ class _EditTemplateScreenState extends State<EditTemplateScreen> {
                       Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          _buildSectionHeader(
-                            'Custom Fields',
-                            Icons.add_box_outlined,
-                            'Add your own fields to any section',
+                          Expanded(
+                            child: _buildSectionHeader(
+                              'Custom Fields',
+                              Icons.add_box_outlined,
+                              'Add your own fields to any section',
+                            ),
                           ),
+                          const SizedBox(width: 8),
                           ElevatedButton.icon(
                             onPressed: _addCustomItem,
                             icon: const Icon(Icons.add, size: 18),

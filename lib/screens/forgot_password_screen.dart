@@ -43,9 +43,16 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
       if (!currentContext.mounted) return;
 
       if (user != null) {
+        final finalUser = user;
+        // Send request to server
+        await BackendService.requestPasswordReset(username);
+        // Update local DB
+        await db.database.then((db) {
+          db.update('users', {'password_reset_requested': 1}, where: 'id = ?', whereArgs: [finalUser.id]);
+        });
         setState(() {
           _userFound = true;
-          _foundUserName = user!.fullName.isNotEmpty ? user.fullName : user.id;
+          _foundUserName = finalUser.fullName.isNotEmpty ? finalUser.fullName : finalUser.id;
         });
         return;
       }
@@ -59,6 +66,8 @@ class _ForgotPasswordScreenState extends State<ForgotPasswordScreen> {
           final sid = su['id']?.toString() ?? '';
           if (sid.toLowerCase() == username.toLowerCase()) {
             final fullName = su['fullName']?.toString() ?? sid;
+            // Send request to server
+            await BackendService.requestPasswordReset(sid);
             setState(() {
               _userFound = true;
               _foundUserName = fullName.isNotEmpty ? fullName : sid;

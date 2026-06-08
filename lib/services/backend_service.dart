@@ -96,21 +96,29 @@ class BackendService {
     required String role,
     required String fullName,
   }) async {
-    final url = Uri.parse('$_baseUrl/upsert_user.php');
-    final response = await http.post(
-      url,
-      body: {
-        'id': id,
-        'password': passwordSha256Hex,
-        'role': role,
-        'fullName': fullName,
-      },
-    );
+    try {
+      final url = Uri.parse('$_baseUrl/upsert_user.php');
+      final response = await http.post(
+        url,
+        body: {
+          'id': id,
+          'password': passwordSha256Hex,
+          'role': role,
+          'fullName': fullName,
+        },
+      );
 
-    if (response.statusCode != 200) return false;
-    final decoded = jsonDecode(response.body);
-    if (decoded is! Map) return false;
-    return decoded['ok'] == true || decoded['success'] == true;
+      if (response.statusCode != 200) {
+        debugPrint('upsertUserToServer HTTP Error: ${response.statusCode} - ${response.body}');
+        return false;
+      }
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['ok'] == true || decoded['success'] == true;
+    } catch (e) {
+      debugPrint('upsertUserToServer Exception: $e');
+      return false;
+    }
   }
 
   static Future<void> testConnection(BuildContext context) async {
@@ -207,6 +215,26 @@ class BackendService {
     }
   }
 
+  /// Requests a password reset for the specified username.
+  /// Server endpoint: POST $_baseUrl/request_password_reset.php
+  static Future<bool> requestPasswordReset(String username) async {
+    final url = Uri.parse('$_baseUrl/request_password_reset.php');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'username': username}),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode != 200) return false;
+      final decoded = jsonDecode(response.body);
+      if (decoded is! Map) return false;
+      return decoded['status'] == 'success';
+    } catch (_) {
+      return false;
+    }
+  }
+
   // ── Company Management ─────────────────────────────────────────────
 
   /// Deletes a company from the central MySQL database on XAMPP.
@@ -222,6 +250,60 @@ class BackendService {
       final decoded = jsonDecode(response.body);
       if (decoded is! Map) return false;
       return decoded['ok'] == true || decoded['success'] == true;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── Worker Management ─────────────────────────────────────────────
+
+  /// Adds a worker to the central MySQL database on XAMPP.
+  static Future<bool> addWorkerToServer({
+    required String userId,
+    required String name,
+    required String ic,
+    required String companies,
+    required String status,
+  }) async {
+    final url = Uri.parse('$_baseUrl/add_worker.php');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({
+          'userId': userId,
+          'name': name,
+          'ic': ic,
+          'companies': companies,
+          'status': status,
+        }),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return decoded['ok'] == true || decoded['success'] == true;
+      }
+      return false;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  /// Deletes a worker from the central MySQL database on XAMPP.
+  static Future<bool> deleteWorkerFromServer(String userId) async {
+    final url = Uri.parse('$_baseUrl/delete_worker.php');
+    try {
+      final response = await http.post(
+        url,
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'userId': userId}),
+      ).timeout(const Duration(seconds: 5));
+
+      if (response.statusCode == 200) {
+        final decoded = jsonDecode(response.body);
+        return decoded['ok'] == true || decoded['success'] == true;
+      }
+      return false;
     } catch (_) {
       return false;
     }
@@ -245,7 +327,11 @@ class BackendService {
 
       if (response.statusCode != 200) return false;
       final decoded = jsonDecode(response.body);
-      return decoded['ok'] == true;
+      if (decoded['ok'] == true) {
+        await DatabaseHelper().clearDeletedDocuments();
+        return true;
+      }
+      return false;
     } catch (e) {
       debugPrint('Sync Audit Error: $e');
       return false;

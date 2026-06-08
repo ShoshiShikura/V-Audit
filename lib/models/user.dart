@@ -4,6 +4,7 @@ class User {
   final String role;
   final String fullName;
   final bool activated;
+  final bool resetRequested;
 
   User({
     required this.id,
@@ -11,6 +12,7 @@ class User {
     required this.role,
     required this.fullName,
     this.activated = false,
+    this.resetRequested = false,
   });
 
   Map<String, dynamic> toMap() {
@@ -20,6 +22,7 @@ class User {
       'role': role,
       'fullName': fullName,
       'activated': activated ? 1 : 0,
+      'password_reset_requested': resetRequested ? 1 : 0,
     };
   }
 
@@ -30,6 +33,7 @@ class User {
       role: map['role'],
       fullName: map['fullName'],
       activated: (map['activated'] ?? 0) == 1,
+      resetRequested: (map['password_reset_requested'] ?? 0) == 1,
     );
   }
 }

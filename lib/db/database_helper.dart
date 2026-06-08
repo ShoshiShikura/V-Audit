@@ -69,7 +69,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 15,
+        version: 17,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -87,7 +87,7 @@ class DatabaseHelper {
         return await openDatabase(
           encryptedPath,
           password: password,
-          version: 15,
+          version: 17,
           onCreate: _onCreate,
           onUpgrade: _onUpgrade,
         );
@@ -112,7 +112,7 @@ class DatabaseHelper {
       return await openDatabase(
         encryptedPath,
         password: password,
-        version: 14,
+        version: 17,
         onCreate: _onCreate,
         onUpgrade: _onUpgrade,
       );
@@ -234,12 +234,19 @@ class DatabaseHelper {
   ''');
 
     await db.execute('''
+    CREATE TABLE deleted_documents (
+      id TEXT PRIMARY KEY
+    )
+  ''');
+
+    await db.execute('''
     CREATE TABLE users (
       id TEXT PRIMARY KEY,
       password TEXT,
       role TEXT,
       fullName TEXT,
-      activated INTEGER DEFAULT 0
+      activated INTEGER DEFAULT 0,
+      password_reset_requested INTEGER DEFAULT 0
     )
   ''');
 
@@ -814,6 +821,26 @@ class DatabaseHelper {
         // Column might already exist, ignore error
       }
     }
+    
+    if (oldVersion < 16) {
+      try {
+        await db.execute('''
+          CREATE TABLE IF NOT EXISTS deleted_documents (
+            id TEXT PRIMARY KEY
+          )
+        ''');
+      } catch (e) {
+      }
+    }
+    
+    if (oldVersion < 17) {
+      try {
+        await db.execute(
+            "ALTER TABLE users ADD COLUMN password_reset_requested INTEGER DEFAULT 0;");
+      } catch (e) {
+        // ignore error
+      }
+    }
   }
 
   /// Updates the status and optional rejection remark of a document.
@@ -1022,11 +1049,19 @@ class DatabaseHelper {
 
   Future<int> deleteDocument(String id) async {
     final db = await database;
-    return await db.delete(
-      'documents',
-      where: 'id = ?',
-      whereArgs: [id],
-    );
+    await db.transaction((txn) async {
+      await txn.delete('documents', where: 'id = ?', whereArgs: [id]);
+      await txn.delete('teams', where: 'documentId = ?', whereArgs: [id]);
+      await txn.delete('finding_summary', where: 'documentId = ?', whereArgs: [id]);
+      // Track deletion for offline sync
+      await txn.insert('deleted_documents', {'id': id}, conflictAlgorithm: ConflictAlgorithm.ignore);
+    });
+    return 1;
+  }
+
+  Future<void> clearDeletedDocuments() async {
+    final db = await database;
+    await db.delete('deleted_documents');
   }
 
   Future<List<Team>> getTeamsByDocumentId(String documentId) async {
@@ -1483,6 +1518,9 @@ class DatabaseHelper {
     final docs = await db.query('documents');
     data['documents'] = docs;
 
+    final deletedDocs = await db.query('deleted_documents');
+    data['deleted_documents'] = deletedDocs;
+
     // 1.5 Teams and Profiling
     final teams = await db.query('teams');
     data['teams'] = teams;
@@ -1567,9 +1605,13 @@ class DatabaseHelper {
         lastModified: doc.lastModified,
         fileName: doc.fileName,
         isDraft: doc.isDraft,
-        ownerId: currentUserId,
+        ownerId: doc.ownerId, // Preserve original owner
         location: doc.location,
         auditor: doc.auditor,
+        templateId: doc.templateId, // Preserve status fields
+        status: doc.status,
+        rejectionRemark: doc.rejectionRemark,
+        isRead: doc.isRead,
       );
       await txn.insert('documents', newDoc.toMap());
 

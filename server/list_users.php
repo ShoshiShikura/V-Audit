@@ -31,7 +31,7 @@ try {
     ]
   );
 
-  $stmt = $pdo->query("SELECT id, role, fullName FROM users");
+  $stmt = $pdo->query("SELECT id, role, fullName, IFNULL(password_reset_requested, 0) as password_reset_requested FROM users");
   $users = $stmt->fetchAll();
 
   respond([

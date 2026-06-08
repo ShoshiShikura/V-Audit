@@ -80,72 +80,71 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await _dbHelper.getUser(id);
       if (!mounted) return;
 
-      // Offline-first: allow login only if user exists locally AND is activated.
-      if (user != null &&
-          user.activated &&
-          user.password == hashedPassword) {
-        final normalizedRole = SessionManager.normalizeRole(user.role);
-        await SessionManager.saveSession(user.id, normalizedRole);
-        if (!mounted) return;
-        Navigator.pushReplacement(
-          context,
-          MaterialPageRoute(
-            builder: (_) =>
-                DashboardScreen(role: normalizedRole, userId: user.id),
-          ),
-        );
-        return;
-      }
-
-      // If user exists locally but not activated, require first-time online verification.
-      // If user doesn't exist locally, also require online verification to "seed" offline login.
+      // ONLINE-FIRST APPROACH
       final online = await BackendService.verifyFirstLogin(
         id: id,
         password: password,
       );
       if (!mounted) return;
 
-      if (!online.ok) {
-        // If we have a local user but wrong password, keep old behavior message.
-        if (user != null && user.password != hashedPassword) {
-          setState(() => _passwordError = 'Incorrect password.');
-        } else if (user != null && !user.activated) {
-          setState(() => _passwordError =
-              'First-time login requires internet connection for verification.');
-        } else {
-          final msg = online.message?.toLowerCase() ?? '';
-          if (msg.contains('password') || msg.contains('credentials')) {
-            setState(() => _passwordError = online.message ?? 'Incorrect password.');
-          } else {
-            setState(() => _idError = online.message ?? 'User not found.');
-          }
-        }
+      final isNetworkError = online.message != null &&
+          (online.message!.contains('SocketException') ||
+              online.message!.contains('TimeoutException') ||
+              online.message!.contains('Failed host lookup') ||
+              online.message!.contains('Connection refused'));
+
+      if (online.ok) {
+        // Server approved. Upsert locally.
+        final role = SessionManager.normalizeRole((online.role ?? (user?.role ?? 'auditor')).trim());
+        final fullName = (online.fullName ?? (user?.fullName ?? '')).trim();
+        final finalId = user?.id ?? id;
+
+        await _dbHelper.upsertActivatedUser(
+          id: finalId,
+          hashedPassword: hashedPassword,
+          role: role,
+          fullName: fullName,
+        );
+        await SessionManager.saveSession(finalId, role);
+        if (!mounted) return;
+
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DashboardScreen(role: role, userId: finalId),
+          ),
+        );
         return;
       }
 
-      final role = SessionManager.normalizeRole(
-        (online.role ?? (user?.role ?? 'auditor')).trim(),
-      );
-      final fullName = (online.fullName ?? (user?.fullName ?? '')).trim();
-
-      final finalId = user?.id ?? id;
-
-      // Upsert locally so subsequent logins are offline-capable.
-      await _dbHelper.upsertActivatedUser(
-        id: finalId,
-        hashedPassword: hashedPassword,
-        role: role,
-        fullName: fullName,
-      );
-      await SessionManager.saveSession(finalId, role);
-      if (!mounted) return;
-
-      Navigator.pushReplacement(
-        context,
-        MaterialPageRoute(
-          builder: (_) => DashboardScreen(role: role, userId: finalId),
-        ),
-      );
+      // Server rejected it or couldn't be reached
+      if (isNetworkError) {
+        // FALLBACK TO OFFLINE
+        if (user != null && user.activated && user.password == hashedPassword) {
+          final normalizedRole = SessionManager.normalizeRole(user.role);
+          await SessionManager.saveSession(user.id, normalizedRole);
+          if (!mounted) return;
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => DashboardScreen(role: normalizedRole, userId: user.id),
+            ),
+          );
+          return;
+        } else {
+          setState(() => _passwordError = 'Offline login failed: Invalid credentials or user not synced.');
+          return;
+        }
+      } else {
+        // Server actively rejected the login (wrong password / user not found)
+        final msg = online.message?.toLowerCase() ?? '';
+        if (msg.contains('password') || msg.contains('credentials')) {
+          setState(() => _passwordError = online.message ?? 'Incorrect password.');
+        } else {
+          setState(() => _idError = online.message ?? 'User not found.');
+        }
+        return;
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

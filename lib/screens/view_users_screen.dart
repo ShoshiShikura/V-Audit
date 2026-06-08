@@ -58,6 +58,23 @@ class UserCard extends StatelessWidget {
                     ),
                   ),
                 ),
+                if (user.resetRequested)
+                  Container(
+                    margin: const EdgeInsets.only(right: 8),
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.withAlpha((0.1 * 255).toInt()),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Text(
+                      'Reset Requested',
+                      style: TextStyle(
+                        color: Colors.red,
+                        fontWeight: FontWeight.bold,
+                        fontSize: 11,
+                      ),
+                    ),
+                  ),
                 Container(
                   padding:
                       const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
@@ -203,6 +220,8 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
   Future<void> _loadUsers() async {
     final users = await DatabaseHelper().getUsers();
     users.sort((a, b) {
+      if (a.resetRequested && !b.resetRequested) return -1;
+      if (!a.resetRequested && b.resetRequested) return 1;
       final aAdmin = SessionManager.isAdministrator(a.role);
       final bAdmin = SessionManager.isAdministrator(b.role);
       if (aAdmin == bAdmin) return 0;
@@ -318,10 +337,40 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
     if (newPassword == null || newPassword.isEmpty) return;
     final hashed = sha256.convert(utf8.encode(newPassword)).toString();
     await DatabaseHelper().updatePassword(id, hashed);
+    
+    // Clear the reset request flag locally
+    await DatabaseHelper().database.then((db) {
+      db.update('users', {'password_reset_requested': 0}, where: 'id = ?', whereArgs: [id]);
+    });
+    
+    // Push the updated password to the server immediately
+    final user = await DatabaseHelper().getUser(id);
+    bool serverUpdated = false;
+    if (user != null) {
+      serverUpdated = await BackendService.upsertUserToServer(
+        id: id,
+        passwordSha256Hex: hashed,
+        role: user.role,
+        fullName: user.fullName,
+      );
+    }
+    
+    _loadUsers();
+
     if (!mounted) return;
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('Password for $id has been reset. Share the new password with them securely.')),
-    );
+    if (serverUpdated) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(content: Text('Password for $id has been reset successfully on both local and server.')),
+      );
+    } else {
+      ScaffoldMessenger.of(context).showSnackBar(
+        SnackBar(
+          content: Text('WARNING: Local password reset, but failed to reach server. User may still login with old password!'),
+          backgroundColor: Colors.orange,
+          duration: const Duration(seconds: 5),
+        ),
+      );
+    }
   }
 
   Future<void> _editUserName(String id, String currentName) async {
@@ -513,6 +562,14 @@ class _ViewUsersScreenState extends State<ViewUsersScreen> {
             fullName: fullName,
           );
           synced++;
+        }
+        
+        // Always sync the reset requested flag if it exists from server
+        if (su.containsKey('password_reset_requested')) {
+           final resetRequested = su['password_reset_requested'] == 1 || su['password_reset_requested'] == '1';
+           await db.database.then((dbInstance) {
+             dbInstance.update('users', {'password_reset_requested': resetRequested ? 1 : 0}, where: 'id = ?', whereArgs: [id]);
+           });
         }
       }
 

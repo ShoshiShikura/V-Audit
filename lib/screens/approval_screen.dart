@@ -5,6 +5,9 @@ import '../models/document.dart';
 import 'app_drawer.dart';
 import '../services/session_manager.dart';
 import 'document_team_screen.dart';
+import 'package:printing/printing.dart';
+import 'package:pdf/pdf.dart';
+import '../services/pdf_service.dart';
 
 class ApprovalScreen extends StatefulWidget {
   final String userId;
@@ -120,7 +123,27 @@ class _ApprovalScreenState extends State<ApprovalScreen>
       ),
       child: InkWell(
         borderRadius: BorderRadius.circular(16),
-        onTap: () {
+        onTap: () async {
+          if (doc.status == 'approved') {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('Approved document cannot be edited. Exporting to PDF...')),
+            );
+            try {
+              final pdfBytes = await PdfService().generateFullAuditPdf(doc.id);
+              if (!mounted) return;
+              await Printing.layoutPdf(
+                onLayout: (PdfPageFormat format) async => pdfBytes,
+              );
+            } catch (e) {
+              if (!mounted) return;
+              ScaffoldMessenger.of(context).showSnackBar(
+                SnackBar(content: Text('Failed to export PDF: $e')),
+              );
+            }
+            return;
+          }
+
+          if (!mounted) return;
           Navigator.push(
             context,
             MaterialPageRoute(

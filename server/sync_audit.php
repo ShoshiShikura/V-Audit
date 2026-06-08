@@ -48,10 +48,10 @@ try {
         // 1. Sync Documents
         if (isset($input['documents']) && is_array($input['documents'])) {
             $stmt = $pdo->prepare("
-                INSERT INTO documents (id, title, description, type, createdDate, lastModified, fileName, isDraft, ownerId, location, auditor) 
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT INTO documents (id, title, description, type, createdDate, lastModified, fileName, isDraft, ownerId, location, auditor, templateId, status, rejectionRemark, isRead) 
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 ON DUPLICATE KEY UPDATE 
-                title=VALUES(title), description=VALUES(description), type=VALUES(type), lastModified=VALUES(lastModified), fileName=VALUES(fileName), isDraft=VALUES(isDraft), ownerId=VALUES(ownerId), location=VALUES(location), auditor=VALUES(auditor)
+                title=VALUES(title), description=VALUES(description), type=VALUES(type), lastModified=VALUES(lastModified), fileName=VALUES(fileName), isDraft=VALUES(isDraft), ownerId=VALUES(ownerId), location=VALUES(location), auditor=VALUES(auditor), templateId=VALUES(templateId), status=VALUES(status), rejectionRemark=VALUES(rejectionRemark), isRead=VALUES(isRead)
             ");
             foreach ($input['documents'] as $doc) {
                 $stmt->execute([
@@ -65,7 +65,11 @@ try {
                     isset($doc['isDraft']) ? (int)$doc['isDraft'] : 1,
                     $doc['ownerId'] ?? null,
                     $doc['location'] ?? null,
-                    $doc['auditor'] ?? null
+                    $doc['auditor'] ?? null,
+                    $doc['templateId'] ?? 'default_vmm_template',
+                    $doc['status'] ?? 'draft',
+                    $doc['rejectionRemark'] ?? '',
+                    isset($doc['isRead']) ? (int)$doc['isRead'] : 0
                 ]);
             }
         }
@@ -151,6 +155,22 @@ try {
                     $fs['documentId'] ?? null,
                     $fs['remark'] ?? null
                 ]);
+            }
+        }
+
+        // 6. Delete Documents tracked for deletion
+        if (isset($input['deleted_documents']) && is_array($input['deleted_documents'])) {
+            $stmtDelDoc = $pdo->prepare("DELETE FROM documents WHERE id = ?");
+            $stmtDelTeam = $pdo->prepare("DELETE FROM teams WHERE documentId = ?");
+            $stmtDelFind = $pdo->prepare("DELETE FROM finding_summary WHERE documentId = ?");
+            
+            foreach ($input['deleted_documents'] as $del) {
+                if (isset($del['id'])) {
+                    $id = $del['id'];
+                    $stmtDelTeam->execute([$id]);
+                    $stmtDelFind->execute([$id]);
+                    $stmtDelDoc->execute([$id]);
+                }
             }
         }
 

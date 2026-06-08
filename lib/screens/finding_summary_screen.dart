@@ -12,6 +12,8 @@ import 'company_name_screen.dart';
 import '../services/pdf_service.dart';
 import '../screens/app_drawer.dart';
 import '../services/session_manager.dart';
+import 'package:sqflite/sqflite.dart';
+import '../services/backend_service.dart';
 
 class AnimatedSavedRow extends StatelessWidget {
   final double opacity;
@@ -107,26 +109,28 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
 
   Future<void> _saveRemark() async {
     final db = await DatabaseHelper().database;
-    final result = await db.query(
-      'finding_summary',
-      where: 'documentId = ?',
-      whereArgs: [widget.documentId],
-      limit: 1,
-    );
     final row = {
       'documentId': widget.documentId,
       'remark': _remarkController.text,
     };
-    if (result.isEmpty) {
-      await db.insert('finding_summary', row);
-    } else {
-      await db.update('finding_summary', row,
-          where: 'documentId = ?', whereArgs: [widget.documentId]);
-    }
+    await db.insert(
+      'finding_summary',
+      row,
+      conflictAlgorithm: ConflictAlgorithm.replace,
+    );
   }
 
   Future<void> _exportCoverPage() async {
     final currentContext = context;
+    if (_documentStatus != 'approved' && !SessionManager.isAdministrator(widget.role)) {
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(
+          content: Text('Document must be approved by an administrator before exporting to PDF.'),
+          backgroundColor: Colors.orange,
+        ),
+      );
+      return;
+    }
     try {
       final pdfBytes =
           await PdfService().generateFullAuditPdf(widget.documentId);
@@ -186,6 +190,10 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
 
     if (confirmed == true) {
       await DatabaseHelper().updateDocumentStatus(widget.documentId, 'pending', rejectionRemark: '');
+      
+      // Manually push to server
+      await BackendService.syncAuditDataToXampp();
+      
       setState(() => _documentStatus = 'pending');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

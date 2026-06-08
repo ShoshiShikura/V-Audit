@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../db/database_helper.dart';
 import '../models/worker.dart';
+import '../services/backend_service.dart';
 
 class WorkerListScreen extends StatefulWidget {
   final String userId;
@@ -218,12 +219,24 @@ class _WorkerListScreenState extends State<WorkerListScreen> {
                             status: status,
                           );
                           await DatabaseHelper().insertWorker(worker);
+                          
+                          // Sync to server
+                          try {
+                            await BackendService.addWorkerToServer(
+                              userId: worker.userId,
+                              name: worker.name,
+                              ic: worker.ic,
+                              companies: worker.companies.join(','),
+                              status: worker.status,
+                            );
+                          } catch (_) {}
+
                           if (!currentContext.mounted) return;
                           Navigator.pop(currentContext);
                           await _loadData();
                           if (currentContext.mounted) {
                             ScaffoldMessenger.of(currentContext).showSnackBar(
-                              const SnackBar(content: Text('Worker added')),
+                              const SnackBar(content: Text('Worker added locally and synced')),
                             );
                           }
                         },
@@ -317,10 +330,16 @@ class _WorkerListScreenState extends State<WorkerListScreen> {
     );
     if (confirmed == true) {
       await DatabaseHelper().deleteWorker(userId);
+      
+      // Sync delete to server
+      try {
+        await BackendService.deleteWorkerFromServer(userId);
+      } catch (_) {}
+
       await _loadData();
       if (currentContext.mounted) {
         ScaffoldMessenger.of(currentContext).showSnackBar(
-          const SnackBar(content: Text('Worker deleted')),
+          const SnackBar(content: Text('Worker deleted locally and synced')),
         );
       }
     }

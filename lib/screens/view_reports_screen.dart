@@ -11,8 +11,8 @@ import 'package:path_provider/path_provider.dart';
 import 'dart:convert';
 import 'dart:io';
 import 'document_team_screen.dart';
-import 'app_drawer.dart';
 import '../services/session_manager.dart';
+import '../services/backend_service.dart';
 
 // ─── Stat Card ────────────────────────────────────────────────────────────────
 
@@ -36,7 +36,10 @@ class _StatCard extends StatelessWidget {
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
         gradient: LinearGradient(
-          colors: [color.withValues(alpha: 0.15), color.withValues(alpha: 0.05)],
+          colors: [
+            color.withValues(alpha: 0.15),
+            color.withValues(alpha: 0.05)
+          ],
           begin: Alignment.topLeft,
           end: Alignment.bottomRight,
         ),
@@ -169,8 +172,7 @@ class _ReportDocumentCard extends StatelessWidget {
     final teamCount = reportData['teamCount'] as int? ?? 0;
     final teamType = doc.type;
     final teamTypeColor = _getTeamTypeColor(teamType);
-    final auditDateStr =
-        '${doc.createdDate.day.toString().padLeft(2, '0')}/'
+    final auditDateStr = '${doc.createdDate.day.toString().padLeft(2, '0')}/'
         '${doc.createdDate.month.toString().padLeft(2, '0')}/'
         '${doc.createdDate.year}';
     final lastModifiedStr = DateFormat('yyyy-MM-dd').format(doc.lastModified);
@@ -239,7 +241,8 @@ class _ReportDocumentCard extends StatelessWidget {
                 ),
                 PopupMenuButton<String>(
                   onSelected: onAction,
-                  icon: Icon(Icons.more_vert, color: Colors.grey.shade500, size: 20),
+                  icon: Icon(Icons.more_vert,
+                      color: Colors.grey.shade500, size: 20),
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(12),
                   ),
@@ -248,7 +251,8 @@ class _ReportDocumentCard extends StatelessWidget {
                       value: 'export_pdf',
                       child: Row(
                         children: [
-                          Icon(Icons.picture_as_pdf, color: Color(0xFF4CAF50), size: 18),
+                          Icon(Icons.picture_as_pdf,
+                              color: Color(0xFF4CAF50), size: 18),
                           SizedBox(width: 8),
                           Text('Export PDF'),
                         ],
@@ -258,18 +262,21 @@ class _ReportDocumentCard extends StatelessWidget {
                       value: 'export_data',
                       child: Row(
                         children: [
-                          Icon(Icons.download, color: Color(0xFFFF9800), size: 18),
+                          Icon(Icons.download,
+                              color: Color(0xFFFF9800), size: 18),
                           SizedBox(width: 8),
                           Text('Export Data'),
                         ],
                       ),
                     ),
-                    if (SessionManager.isAdministrator(role) && doc.status == 'pending') ...[
+                    if (SessionManager.isAdministrator(role) &&
+                        doc.status == 'pending') ...[
                       const PopupMenuItem(
                         value: 'approve',
                         child: Row(
                           children: [
-                            Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 18),
+                            Icon(Icons.check_circle,
+                                color: Color(0xFF4CAF50), size: 18),
                             SizedBox(width: 8),
                             Text('Approve'),
                           ],
@@ -308,7 +315,8 @@ class _ReportDocumentCard extends StatelessWidget {
               children: [
                 _statusBadge(doc.status),
                 const Spacer(),
-                Icon(Icons.account_circle, size: 14, color: Colors.grey.shade400),
+                Icon(Icons.account_circle,
+                    size: 14, color: Colors.grey.shade400),
                 const SizedBox(width: 4),
                 Text(
                   'Owner: ${doc.ownerId}',
@@ -349,7 +357,8 @@ class _ReportDocumentCard extends StatelessWidget {
           Flexible(
             child: Text(
               text,
-              style: TextStyle(fontSize: 11, color: color.withValues(alpha: 0.9)),
+              style:
+                  TextStyle(fontSize: 11, color: color.withValues(alpha: 0.9)),
               overflow: TextOverflow.ellipsis,
             ),
           ),
@@ -522,11 +531,13 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
         }
 
         // Date range filter
-        if (_filterStartDate != null && doc.createdDate.isBefore(_filterStartDate!)) {
+        if (_filterStartDate != null &&
+            doc.createdDate.isBefore(_filterStartDate!)) {
           return false;
         }
         if (_filterEndDate != null &&
-            doc.createdDate.isAfter(_filterEndDate!.add(const Duration(days: 1)))) {
+            doc.createdDate
+                .isAfter(_filterEndDate!.add(const Duration(days: 1)))) {
           return false;
         }
 
@@ -550,9 +561,13 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
         case 'title':
           return docA.title.toLowerCase().compareTo(docB.title.toLowerCase());
         case 'company':
-          return docA.description.toLowerCase().compareTo(docB.description.toLowerCase());
+          return docA.description
+              .toLowerCase()
+              .compareTo(docB.description.toLowerCase());
         case 'auditor':
-          return docA.auditor.toLowerCase().compareTo(docB.auditor.toLowerCase());
+          return docA.auditor
+              .toLowerCase()
+              .compareTo(docB.auditor.toLowerCase());
         default:
           return 0;
       }
@@ -581,7 +596,9 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
     if (doc.status == 'approved') {
       _onReportAction('export_pdf', item);
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Approved document cannot be edited. Exporting to PDF...')),
+        const SnackBar(
+            content: Text(
+                'Approved document cannot be edited. Exporting to PDF...')),
       );
       return;
     }
@@ -602,6 +619,15 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
     final currentContext = context;
 
     if (action == 'export_pdf') {
+      if (doc.status != 'approved' && !SessionManager.isAdministrator(widget.role)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document must be approved by an administrator before exporting to PDF.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
       try {
         final pdfBytes = await PdfService().generateFullAuditPdf(doc.id);
         await Printing.layoutPdf(onLayout: (format) async => pdfBytes);
@@ -617,7 +643,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('Approve Audit'),
           content: Text('Approve "${doc.title}" by ${doc.auditor}?'),
           actions: [
@@ -638,6 +665,10 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
       );
       if (confirmed == true) {
         await DatabaseHelper().updateDocumentStatus(doc.id, 'approved');
+
+        // Manually push to server
+        await BackendService.syncAuditDataToXampp();
+
         await _loadData();
         if (currentContext.mounted) {
           ScaffoldMessenger.of(currentContext).showSnackBar(
@@ -653,7 +684,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
       final confirmed = await showDialog<bool>(
         context: context,
         builder: (context) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+          shape:
+              RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           title: const Text('Reject Audit'),
           content: Column(
             mainAxisSize: MainAxisSize.min,
@@ -701,6 +733,10 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
           'rejected',
           rejectionRemark: remarkController.text.trim(),
         );
+
+        // Manually push to server
+        await BackendService.syncAuditDataToXampp();
+
         remarkController.dispose();
         await _loadData();
         if (currentContext.mounted) {
@@ -723,20 +759,25 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
       final db = await DatabaseHelper().database;
       final docId = doc.id;
 
-      final teams = await db.query('teams', where: 'documentId = ?', whereArgs: [docId]);
-      final profilingData = await db.query('profiling_team', where: 'documentId = ?', whereArgs: [docId]);
+      final teams =
+          await db.query('teams', where: 'documentId = ?', whereArgs: [docId]);
+      final profilingData = await db
+          .query('profiling_team', where: 'documentId = ?', whereArgs: [docId]);
       final teamIds = teams.map((t) => t['id'] as String).toList();
       final summaryData = teamIds.isNotEmpty
           ? await db.query('summary_team',
-              where: 'teamId IN (${List.filled(teamIds.length, '?').join(',')})',
+              where:
+                  'teamId IN (${List.filled(teamIds.length, '?').join(',')})',
               whereArgs: teamIds)
           : [];
       final companyNameData = teamIds.isNotEmpty
           ? await db.query('company_name',
-              where: 'teamId IN (${List.filled(teamIds.length, '?').join(',')})',
+              where:
+                  'teamId IN (${List.filled(teamIds.length, '?').join(',')})',
               whereArgs: teamIds)
           : [];
-      final findingData = await db.query('finding_summary', where: 'documentId = ?', whereArgs: [docId]);
+      final findingData = await db.query('finding_summary',
+          where: 'documentId = ?', whereArgs: [docId]);
 
       // Collect images
       Map<String, dynamic> imageFiles = {};
@@ -748,7 +789,10 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
           if (await imageFile.exists()) {
             final imageBytes = await imageFile.readAsBytes();
             final fileName = attachmentPath.split('/').last;
-            imageFiles[teamId] = {'fileName': fileName, 'data': base64Encode(imageBytes)};
+            imageFiles[teamId] = {
+              'fileName': fileName,
+              'data': base64Encode(imageBytes)
+            };
           }
         }
       }
@@ -773,14 +817,17 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
         'missingImages': <String>[],
       };
 
-      final exportEnvelope = await AuditDataTransferService.buildExportFileContent(exportData);
+      final exportEnvelope =
+          await AuditDataTransferService.buildExportFileContent(exportData);
       final directory = await getApplicationDocumentsDirectory();
-      final fileName = 'audit_${docId}_${DateTime.now().millisecondsSinceEpoch}.auditdata';
+      final fileName =
+          'audit_${docId}_${DateTime.now().millisecondsSinceEpoch}.auditdata';
       final file = File('${directory.path}/$fileName');
       await file.writeAsString(exportEnvelope);
 
       if (!currentContext.mounted) return;
-      await Share.shareXFiles([XFile(file.path)], text: 'Audit Data Export: ${doc.title}');
+      await Share.shareXFiles([XFile(file.path)],
+          text: 'Audit Data Export: ${doc.title}');
     } catch (e) {
       if (!currentContext.mounted) return;
       ScaffoldMessenger.of(currentContext).showSnackBar(
@@ -807,24 +854,50 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
               _sheetHandle(),
               const Padding(
                 padding: EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-                child: Text('Sort By', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                child: Text('Sort By',
+                    style:
+                        TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
               ),
               const Divider(height: 1),
               for (final option in [
-                {'key': 'recent', 'label': 'Most Recent', 'icon': Icons.schedule},
-                {'key': 'oldest', 'label': 'Oldest First', 'icon': Icons.history},
-                {'key': 'title', 'label': 'Title (A-Z)', 'icon': Icons.sort_by_alpha},
-                {'key': 'company', 'label': 'Company (A-Z)', 'icon': Icons.business},
-                {'key': 'auditor', 'label': 'Auditor (A-Z)', 'icon': Icons.person},
+                {
+                  'key': 'recent',
+                  'label': 'Most Recent',
+                  'icon': Icons.schedule
+                },
+                {
+                  'key': 'oldest',
+                  'label': 'Oldest First',
+                  'icon': Icons.history
+                },
+                {
+                  'key': 'title',
+                  'label': 'Title (A-Z)',
+                  'icon': Icons.sort_by_alpha
+                },
+                {
+                  'key': 'company',
+                  'label': 'Company (A-Z)',
+                  'icon': Icons.business
+                },
+                {
+                  'key': 'auditor',
+                  'label': 'Auditor (A-Z)',
+                  'icon': Icons.person
+                },
               ])
                 ListTile(
                   dense: true,
                   leading: Icon(option['icon'] as IconData,
-                      color: _sortBy == option['key'] ? const Color(0xFF4B1EFF) : Colors.grey.shade600,
+                      color: _sortBy == option['key']
+                          ? const Color(0xFF4B1EFF)
+                          : Colors.grey.shade600,
                       size: 20),
-                  title: Text(option['label'] as String, style: const TextStyle(fontSize: 15)),
+                  title: Text(option['label'] as String,
+                      style: const TextStyle(fontSize: 15)),
                   trailing: _sortBy == option['key']
-                      ? const Icon(Icons.check, color: Color(0xFF4B1EFF), size: 20)
+                      ? const Icon(Icons.check,
+                          color: Color(0xFF4B1EFF), size: 20)
                       : null,
                   onTap: () {
                     setState(() {
@@ -865,11 +938,14 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                   children: [
                     _sheetHandle(),
                     Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+                      padding: const EdgeInsets.symmetric(
+                          horizontal: 20, vertical: 8),
                       child: Row(
                         mainAxisAlignment: MainAxisAlignment.spaceBetween,
                         children: [
-                          const Text('Filters', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+                          const Text('Filters',
+                              style: TextStyle(
+                                  fontWeight: FontWeight.bold, fontSize: 16)),
                           TextButton(
                             onPressed: () {
                               setState(() {
@@ -881,7 +957,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                               setModalState(() {});
                               _applyFilters();
                             },
-                            child: const Text('Clear All', style: TextStyle(color: Color(0xFF4B1EFF))),
+                            child: const Text('Clear All',
+                                style: TextStyle(color: Color(0xFF4B1EFF))),
                           ),
                         ],
                       ),
@@ -890,7 +967,9 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                     // Type filter
                     const Padding(
                       padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                      child: Text('Team Type', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      child: Text('Team Type',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14)),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -912,9 +991,11 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                               setModalState(() {});
                               _applyFilters();
                             },
-                            selectedColor: const Color(0xFF4B1EFF).withValues(alpha: 0.15),
+                            selectedColor:
+                                const Color(0xFF4B1EFF).withValues(alpha: 0.15),
                             checkmarkColor: const Color(0xFF4B1EFF),
-                            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+                            shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(20)),
                           );
                         }).toList(),
                       ),
@@ -923,14 +1004,17 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                     if (_availableAuditors.isNotEmpty) ...[
                       const Padding(
                         padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                        child: Text('Auditor', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                        child: Text('Auditor',
+                            style: TextStyle(
+                                fontWeight: FontWeight.w600, fontSize: 14)),
                       ),
                       Padding(
                         padding: const EdgeInsets.symmetric(horizontal: 20),
                         child: DropdownButtonFormField<String?>(
                           initialValue: _selectedAuditor,
                           items: [
-                            const DropdownMenuItem(value: null, child: Text('All Auditors')),
+                            const DropdownMenuItem(
+                                value: null, child: Text('All Auditors')),
                             ..._availableAuditors.map(
                               (a) => DropdownMenuItem(value: a, child: Text(a)),
                             ),
@@ -943,9 +1027,11 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                           decoration: InputDecoration(
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(12),
-                              borderSide: BorderSide(color: Colors.grey.shade300),
+                              borderSide:
+                                  BorderSide(color: Colors.grey.shade300),
                             ),
-                            contentPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+                            contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 12, vertical: 8),
                           ),
                         ),
                       ),
@@ -953,7 +1039,9 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                     // Date range filter
                     const Padding(
                       padding: EdgeInsets.fromLTRB(20, 16, 20, 8),
-                      child: Text('Audit Date Range', style: TextStyle(fontWeight: FontWeight.w600, fontSize: 14)),
+                      child: Text('Audit Date Range',
+                          style: TextStyle(
+                              fontWeight: FontWeight.w600, fontSize: 14)),
                     ),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 20),
@@ -964,7 +1052,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                               onTap: () async {
                                 final picked = await showDatePicker(
                                   context: context,
-                                  initialDate: _filterStartDate ?? DateTime.now(),
+                                  initialDate:
+                                      _filterStartDate ?? DateTime.now(),
                                   firstDate: DateTime(2020),
                                   lastDate: DateTime(2100),
                                 );
@@ -1024,7 +1113,10 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
         children: [
           Icon(Icons.calendar_today, size: 16, color: Colors.grey.shade600),
           const SizedBox(width: 8),
-          Text(text, style: TextStyle(fontSize: 13, color: date != null ? Colors.black87 : Colors.grey.shade500)),
+          Text(text,
+              style: TextStyle(
+                  fontSize: 13,
+                  color: date != null ? Colors.black87 : Colors.grey.shade500)),
         ],
       ),
     );
@@ -1053,21 +1145,14 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
     final uniqueAuditors = _availableAuditors.length;
 
     return Scaffold(
-      drawer: AppDrawer(
-        currentPage: 'reports',
-        userId: widget.userId,
-        role: widget.role,
-      ),
       appBar: AppBar(
         title: const Text('Reports'),
         backgroundColor: Colors.white,
         foregroundColor: Colors.black,
         elevation: 0.5,
-        leading: Builder(
-          builder: (context) => IconButton(
-            icon: const Icon(Icons.menu),
-            onPressed: () => Scaffold.of(context).openDrawer(),
-          ),
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          onPressed: () => Navigator.pop(context),
         ),
       ),
       backgroundColor: const Color(0xFFF7F8FA),
@@ -1127,7 +1212,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                               spacing: 8,
                               runSpacing: 8,
                               children: _typeCounts.entries
-                                  .map((e) => _TypeBadge(type: e.key, count: e.value))
+                                  .map((e) =>
+                                      _TypeBadge(type: e.key, count: e.value))
                                   .toList(),
                             ),
                         ],
@@ -1153,7 +1239,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                                 ),
                                 filled: true,
                                 fillColor: Colors.white,
-                                contentPadding: const EdgeInsets.symmetric(vertical: 0, horizontal: 8),
+                                contentPadding: const EdgeInsets.symmetric(
+                                    vertical: 0, horizontal: 8),
                               ),
                             ),
                           ),
@@ -1200,7 +1287,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                         children: [
                           Expanded(
                             child: Container(
-                              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                              padding: const EdgeInsets.symmetric(
+                                  horizontal: 16, vertical: 8),
                               decoration: BoxDecoration(
                                 color: Colors.white,
                                 borderRadius: BorderRadius.circular(12),
@@ -1209,15 +1297,21 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                               child: Row(
                                 children: [
                                   Icon(
-                                    _isGroupedByCompany ? Icons.business : Icons.person,
+                                    _isGroupedByCompany
+                                        ? Icons.business
+                                        : Icons.person,
                                     size: 20,
                                     color: Colors.grey.shade600,
                                   ),
                                   const SizedBox(width: 8),
                                   Expanded(
                                     child: Text(
-                                      _isGroupedByCompany ? 'Group by Company' : 'Group by Auditor',
-                                      style: TextStyle(fontWeight: FontWeight.w500, color: Colors.grey.shade700),
+                                      _isGroupedByCompany
+                                          ? 'Group by Company'
+                                          : 'Group by Auditor',
+                                      style: TextStyle(
+                                          fontWeight: FontWeight.w500,
+                                          color: Colors.grey.shade700),
                                     ),
                                   ),
                                   Switch(
@@ -1259,10 +1353,12 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                         child: Column(
                           mainAxisSize: MainAxisSize.min,
                           children: [
-                            Icon(Icons.search_off, size: 48, color: Colors.grey),
+                            Icon(Icons.search_off,
+                                size: 48, color: Colors.grey),
                             SizedBox(height: 12),
                             Text('No audit reports found',
-                                style: TextStyle(color: Colors.grey, fontSize: 16)),
+                                style: TextStyle(
+                                    color: Colors.grey, fontSize: 16)),
                           ],
                         ),
                       ),
@@ -1288,7 +1384,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                             return _ReportDocumentCard(
                               reportData: item,
                               onTap: () => _onReportTap(item),
-                              onAction: (action) => _onReportAction(action, item),
+                              onAction: (action) =>
+                                  _onReportAction(action, item),
                               role: widget.role,
                             );
                           },
@@ -1316,7 +1413,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
             decoration: BoxDecoration(
               color: const Color(0xFF4B1EFF).withValues(alpha: 0.06),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: const Color(0xFF4B1EFF).withValues(alpha: 0.15)),
+              border: Border.all(
+                  color: const Color(0xFF4B1EFF).withValues(alpha: 0.15)),
             ),
             child: Row(
               children: [
@@ -1337,7 +1435,8 @@ class _ViewReportsScreenState extends State<ViewReportsScreen> {
                   ),
                 ),
                 Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                  padding:
+                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
                   decoration: BoxDecoration(
                     color: const Color(0xFF4B1EFF).withValues(alpha: 0.12),
                     borderRadius: BorderRadius.circular(10),

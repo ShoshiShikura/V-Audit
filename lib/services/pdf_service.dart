@@ -1237,7 +1237,7 @@ pw.Widget buildTeamCard(
                   pw.MemoryImage(imageBytes),
                   width: 170,
                   height: 170,
-                  fit: pw.BoxFit.cover,
+                  fit: pw.BoxFit.contain,
                 ),
               )
             : pw.Container(

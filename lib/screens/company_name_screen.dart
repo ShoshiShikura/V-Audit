@@ -10,6 +10,7 @@ import 'summary_team_screen.dart';
 import 'finding_summary_screen.dart';
 import '../screens/app_drawer.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:sqflite/sqflite.dart';
 
 class AnimatedSavedRow extends StatelessWidget {
   final double opacity;
@@ -571,23 +572,11 @@ class _CompanyNameScreenState extends State<CompanyNameScreen> {
         'remark': _autoRemark,
         'members': membersToSave.join('|'),
       };
-      final result = await db.query(
+      await db.insert(
         'company_name',
-        where: 'teamId = ?',
-        whereArgs: [id],
-        limit: 1,
+        row,
+        conflictAlgorithm: ConflictAlgorithm.replace,
       );
-      if (result.isEmpty) {
-        await db.insert('company_name', row);
-      } else {
-        if (!mounted) return;
-        await db.update(
-          'company_name',
-          row,
-          where: 'teamId = ?',
-          whereArgs: [id],
-        );
-      }
     } catch (e) {
       debugPrint('Error saving company data: $e');
       if (mounted) {

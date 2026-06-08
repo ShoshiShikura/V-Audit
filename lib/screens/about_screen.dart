@@ -1,7 +1,4 @@
 import 'package:flutter/material.dart';
-import '../services/session_manager.dart';
-import '../db/database_helper.dart';
-import '../models/preset_workers.dart';
 
 class AboutEmailRow extends StatelessWidget {
   const AboutEmailRow({super.key});
@@ -77,16 +74,14 @@ class AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 8),
                     const Text(
-                      'Version 1.2.0',
+                      'Version 1.0.0',
                       style: TextStyle(
                         fontSize: 16,
                         color: Colors.black54,
                         fontWeight: FontWeight.w500,
                       ),
                     ),
-                    const SizedBox(height: 8),
-                    _ChangelogSection(),
-                    const SizedBox(height: 20),
+                    const SizedBox(height: 28),
                     const Text(
                       'V-Audit is an offline audit logging tool for internal team use, supporting PDF generation and team management.',
                       style: TextStyle(
@@ -116,149 +111,6 @@ class AboutScreen extends StatelessWidget {
                     ),
                     const SizedBox(height: 16),
                     const AboutEmailRow(),
-                    const SizedBox(height: 24),
-                    ElevatedButton.icon(
-                      icon: const Icon(Icons.refresh),
-                      label: const Text('Reset Worker Database'),
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: Colors.red,
-                        foregroundColor: Colors.white,
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(12),
-                        ),
-                        padding: const EdgeInsets.symmetric(
-                            vertical: 14, horizontal: 20),
-                        textStyle: const TextStyle(fontWeight: FontWeight.bold),
-                      ),
-                      onPressed: () async {
-                        final confirmed = await showDialog<bool>(
-                          context: context,
-                          builder: (dialogContext) => Dialog(
-                            shape: RoundedRectangleBorder(
-                              borderRadius: BorderRadius.circular(24),
-                            ),
-                            backgroundColor: Colors.white,
-                            child: ConstrainedBox(
-                              constraints: const BoxConstraints(maxWidth: 400),
-                              child: Column(
-                                mainAxisSize: MainAxisSize.min,
-                                children: [
-                                  Padding(
-                                    padding: const EdgeInsets.symmetric(
-                                      horizontal: 24,
-                                      vertical: 24,
-                                    ),
-                                    child: Column(
-                                      mainAxisSize: MainAxisSize.min,
-                                      crossAxisAlignment:
-                                          CrossAxisAlignment.stretch,
-                                      children: [
-                                        const Text(
-                                          'Reset Worker Database',
-                                          style: TextStyle(
-                                            fontWeight: FontWeight.bold,
-                                            fontSize: 22,
-                                          ),
-                                        ),
-                                        const SizedBox(height: 16),
-                                        const Text(
-                                          'This will delete all current workers and restore the preset worker list. This cannot be undone. Continue?',
-                                          style: TextStyle(
-                                            fontSize: 16,
-                                            color: Colors.black87,
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                  Container(
-                                    padding: const EdgeInsets.fromLTRB(
-                                        24, 0, 24, 24),
-                                    child: Row(
-                                      children: [
-                                        Expanded(
-                                          child: TextButton(
-                                            onPressed: () => Navigator.pop(
-                                                dialogContext, false),
-                                            child: const Text('Cancel'),
-                                          ),
-                                        ),
-                                        const SizedBox(width: 12),
-                                        Expanded(
-                                          child: ElevatedButton(
-                                            onPressed: () => Navigator.pop(
-                                                dialogContext, true),
-                                            style: ElevatedButton.styleFrom(
-                                              backgroundColor: Colors.red,
-                                              foregroundColor: Colors.white,
-                                              shape: RoundedRectangleBorder(
-                                                borderRadius:
-                                                    BorderRadius.circular(12),
-                                              ),
-                                              padding:
-                                                  const EdgeInsets.symmetric(
-                                                      vertical: 14),
-                                              textStyle: const TextStyle(
-                                                fontWeight: FontWeight.bold,
-                                              ),
-                                            ),
-                                            child: const Text('Reset'),
-                                          ),
-                                        ),
-                                      ],
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                          ),
-                        );
-                        if (confirmed == true) {
-                          final db = DatabaseHelper();
-                          final database = await db.database;
-                          await database.delete('workers');
-                          for (final worker in presetWorkers) {
-                            await db.insertWorker(worker);
-                          }
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content:
-                                      Text('Worker database has been reset.')),
-                            );
-                          }
-                        }
-                      },
-                    ),
-                    // --- MIGRATION BUTTON FOR SUPERADMIN ---
-                    if (SessionManager.isAdministrator(role)) ...[
-                      const SizedBox(height: 16),
-                      ElevatedButton.icon(
-                        icon: const Icon(Icons.admin_panel_settings),
-                        label:
-                            const Text('Fix All Users (Decryption Migration)'),
-                        style: ElevatedButton.styleFrom(
-                          backgroundColor: Colors.deepPurple,
-                          foregroundColor: Colors.white,
-                          shape: RoundedRectangleBorder(
-                            borderRadius: BorderRadius.circular(12),
-                          ),
-                          padding: const EdgeInsets.symmetric(
-                              vertical: 14, horizontal: 20),
-                          textStyle:
-                              const TextStyle(fontWeight: FontWeight.bold),
-                        ),
-                        onPressed: () async {
-                          await DatabaseHelper().fixAllUsersDecryption();
-                          if (context.mounted) {
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              const SnackBar(
-                                  content: Text('User migration complete!')),
-                            );
-                          }
-                        },
-                      ),
-                    ],
                   ],
                 ),
               ),

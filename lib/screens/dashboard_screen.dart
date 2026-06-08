@@ -273,26 +273,26 @@ class DocumentCard extends StatelessWidget {
                   onAction('export');
                 },
               ),
-              ListTile(
-                dense: true,
-                contentPadding: const EdgeInsets.symmetric(
-                  horizontal: 20,
-                  vertical: 4,
-                ),
-                leading: Icon(
-                  Icons.download,
-                  color: const Color(0xFFFF9800),
-                  size: 20,
-                ),
-                title: const Text(
-                  'Export Data',
-                  style: TextStyle(fontSize: 15),
-                ),
-                onTap: () {
-                  Navigator.pop(context);
-                  onAction('export_data');
-                },
-              ),
+              // ListTile(
+              //   dense: true,
+              //   contentPadding: const EdgeInsets.symmetric(
+              //     horizontal: 20,
+              //     vertical: 4,
+              //   ),
+              //   leading: Icon(
+              //     Icons.download,
+              //     color: const Color(0xFFFF9800),
+              //     size: 20,
+              //   ),
+              //   title: const Text(
+              //     'Export Data',
+              //     style: TextStyle(fontSize: 15),
+              //   ),
+              //   onTap: () {
+              //     Navigator.pop(context);
+              //     onAction('export_data');
+              //   },
+              // ),
               const Divider(height: 1, thickness: 0.5),
               ListTile(
                 dense: true,
@@ -481,8 +481,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
   List<Map<String, dynamic>> _filteredDocuments = [];
   String _sortBy = 'recent'; // 'recent' or 'oldest'
   
-  // Auto-sync timer
-  Timer? _syncTimer;
+  // Auto-sync disabled for presentation
 
   // Filter state
   List<String> _selectedTeamTypes = [];
@@ -498,20 +497,10 @@ class _DashboardScreenState extends State<DashboardScreen> {
     super.initState();
     _loadDocuments();
     _searchController.addListener(_filterDocuments);
-    
-    // Auto-sync every 15 seconds
-    _syncTimer = Timer.periodic(const Duration(seconds: 15), (timer) async {
-      await BackendService.syncAuditDataToXampp();
-      bool newPulls = await BackendService.pullAuditDataFromXampp(widget.userId);
-      if (newPulls && mounted) {
-        _loadDocuments();
       }
-    });
-  }
 
   @override
   void dispose() {
-    _syncTimer?.cancel();
     _searchController.dispose();
     super.dispose();
   }
@@ -834,13 +823,20 @@ class _DashboardScreenState extends State<DashboardScreen> {
       return;
     }
     if (action == 'export') {
-      // Export PDF logic (same as Finding & Summary page)
+      if (document['status'] != 'approved' && !SessionManager.isAdministrator(widget.role)) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Document must be approved by an administrator before exporting to PDF.'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+        return;
+      }
       try {
         final pdfBytes = await PdfService().generateFullAuditPdf(
           document['id'],
         );
         if (!mounted) return;
-        // Use printing package to share or preview
         await Printing.layoutPdf(
           onLayout: (PdfPageFormat format) async => pdfBytes,
         );
@@ -1784,34 +1780,71 @@ class _DashboardScreenState extends State<DashboardScreen> {
     }
   }
 
-  Widget _buildGroupedDocumentsList() {
-    return ListView.builder(
-      itemCount: _groupedDocuments.length,
-      itemBuilder: (context, index) {
-        final companyName = _groupedDocuments.keys.elementAt(index);
-        final documents = _groupedDocuments[companyName]!;
-        return CompanyGroupCard(
-          companyName: companyName,
-          documents: documents,
-          onDocumentTap: (document) => _onDocumentTap(document),
-          onDocumentAction: (action, document) =>
-              _onDocumentAction(action, document),
+  Future<void> _performManualSync() async {
+    bool okImages = await BackendService.syncEvidenceImagesToXampp();
+    bool okData = await BackendService.syncAuditDataToXampp();
+    await BackendService.pullAuditDataFromXampp(widget.userId);
+
+    if (!mounted) return;
+    
+    if (okImages && okData) {
+      await _loadDocuments();
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Manual synchronization successful!'),
+            backgroundColor: Colors.green,
+          ),
         );
-      },
+      }
+    } else {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Synchronization encountered errors. Ensure you have internet.'),
+            backgroundColor: Colors.red,
+          ),
+        );
+      }
+    }
+  }
+
+  Widget _buildGroupedDocumentsList() {
+    return RefreshIndicator(
+      onRefresh: _performManualSync,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _groupedDocuments.length,
+        itemBuilder: (context, index) {
+          final companyName = _groupedDocuments.keys.elementAt(index);
+          final documents = _groupedDocuments[companyName]!;
+          return CompanyGroupCard(
+            companyName: companyName,
+            documents: documents,
+            onDocumentTap: (document) => _onDocumentTap(document),
+            onDocumentAction: (action, document) =>
+                _onDocumentAction(action, document),
+          );
+        },
+      ),
     );
   }
 
   Widget _buildRegularDocumentsList() {
-    return ListView.builder(
-      itemCount: _filteredDocuments.length,
-      itemBuilder: (context, index) {
-        final document = _filteredDocuments[index];
-        return DocumentCard(
-          document: document,
-          onTap: () => _onDocumentTap(document),
-          onAction: (action) => _onDocumentAction(action, document),
-        );
-      },
+    return RefreshIndicator(
+      onRefresh: _performManualSync,
+      child: ListView.builder(
+        physics: const AlwaysScrollableScrollPhysics(),
+        itemCount: _filteredDocuments.length,
+        itemBuilder: (context, index) {
+          final document = _filteredDocuments[index];
+          return DocumentCard(
+            document: document,
+            onTap: () => _onDocumentTap(document),
+            onAction: (action) => _onDocumentAction(action, document),
+          );
+        },
+      ),
     );
   }
 
@@ -1888,40 +1921,7 @@ class _DashboardScreenState extends State<DashboardScreen> {
             onPressed: () => Scaffold.of(context).openDrawer(),
           ),
         ),
-        actions: [
-          // Hidden for now — XAMPP sync not configured
-          // if (SessionManager.isAuditor(widget.role))
-          //   IconButton(
-          //     icon: const Icon(Icons.cloud_sync, color: Color(0xFF4B1EFF)),
-          //     tooltip: 'Sync Audit Data to XAMPP',
-          //     onPressed: () async {
-          //       ScaffoldMessenger.of(context).showSnackBar(
-          //         const SnackBar(content: Text('Starting synchronization...')),
-          //       );
-          //       
-          //       bool okImages = await BackendService.syncEvidenceImagesToXampp();
-          //       bool okData = await BackendService.syncAuditDataToXampp();
-          //
-          //       if (!context.mounted) return;
-          //       
-          //       if (okImages && okData) {
-          //         ScaffoldMessenger.of(context).showSnackBar(
-          //           const SnackBar(
-          //             content: Text('Synchronization to XAMPP successful!'),
-          //             backgroundColor: Colors.green,
-          //           ),
-          //         );
-          //       } else {
-          //         ScaffoldMessenger.of(context).showSnackBar(
-          //           const SnackBar(
-          //             content: Text('Synchronization encountered errors. Make sure XAMPP is running.'),
-          //             backgroundColor: Colors.red,
-          //           ),
-          //         );
-          //       }
-          //     },
-          //   ),
-        ],
+        actions: [],
       ),
       backgroundColor: const Color(0xFFF7F8FA),
       body: Padding(
@@ -2039,104 +2039,108 @@ class _DashboardScreenState extends State<DashboardScreen> {
             // Superadmin-only section
             if (SessionManager.isAdministrator(widget.role)) ...[
               Expanded(
-                child: ListView(
-                  children: [
-                    _buildAdminMenuButton(
-                      icon: Icons.people,
-                      label: 'View Users',
-                      color: const Color(0xFF4B1EFF),
-                      onPressed: _navigateToViewUsers,
-                    ),
-                    _buildAdminMenuButton(
-                      icon: Icons.person_add,
-                      label: 'Add New User',
-                      color: const Color(0xFF2ECC71),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => AddUserScreen(
-                              currentUserId: widget.userId,
-                              currentUserRole: widget.role,
+                child: RefreshIndicator(
+                  onRefresh: _performManualSync,
+                  child: ListView(
+                    physics: const AlwaysScrollableScrollPhysics(),
+                    children: [
+                      _buildAdminMenuButton(
+                        icon: Icons.people,
+                        label: 'View Users',
+                        color: const Color(0xFF4B1EFF),
+                        onPressed: _navigateToViewUsers,
+                      ),
+                      _buildAdminMenuButton(
+                        icon: Icons.person_add,
+                        label: 'Add New User',
+                        color: const Color(0xFF2ECC71),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => AddUserScreen(
+                                currentUserId: widget.userId,
+                                currentUserRole: widget.role,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildAdminMenuButton(
-                      icon: Icons.assessment,
-                      label: 'View Reports',
-                      color: const Color(0xFF8E44AD),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ViewReportsScreen(
-                              userId: widget.userId,
-                              role: widget.role,
+                          );
+                        },
+                      ),
+                      _buildAdminMenuButton(
+                        icon: Icons.assessment,
+                        label: 'View Reports',
+                        color: const Color(0xFF8E44AD),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ViewReportsScreen(
+                                userId: widget.userId,
+                                role: widget.role,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildAdminMenuButton(
-                      icon: Icons.article,
-                      label: 'Audit Templates',
-                      color: const Color(0xFF2980B9),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => ManageTemplatesScreen(
-                              userId: widget.userId,
-                              role: widget.role,
+                          );
+                        },
+                      ),
+                      _buildAdminMenuButton(
+                        icon: Icons.article,
+                        label: 'Audit Templates',
+                        color: const Color(0xFF2980B9),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => ManageTemplatesScreen(
+                                userId: widget.userId,
+                                role: widget.role,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildAdminMenuButton(
-                      icon: Icons.business,
-                      label: 'Company List',
-                      color: const Color(0xFFE67E22),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => CompanyListScreen(
-                              userId: widget.userId,
-                              role: widget.role,
+                          );
+                        },
+                      ),
+                      _buildAdminMenuButton(
+                        icon: Icons.business,
+                        label: 'Company List',
+                        color: const Color(0xFFE67E22),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => CompanyListScreen(
+                                userId: widget.userId,
+                                role: widget.role,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildAdminMenuButton(
-                      icon: Icons.badge,
-                      label: 'Worker List',
-                      color: const Color(0xFF16A085),
-                      onPressed: () {
-                        Navigator.push(
-                          context,
-                          MaterialPageRoute(
-                            builder: (_) => WorkerListScreen(
-                              userId: widget.userId,
-                              role: widget.role,
+                          );
+                        },
+                      ),
+                      _buildAdminMenuButton(
+                        icon: Icons.badge,
+                        label: 'Worker List',
+                        color: const Color(0xFF16A085),
+                        onPressed: () {
+                          Navigator.push(
+                            context,
+                            MaterialPageRoute(
+                              builder: (_) => WorkerListScreen(
+                                userId: widget.userId,
+                                role: widget.role,
+                              ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
-                    _buildAdminMenuButton(
-                      icon: Icons.cloud_done,
-                      label: 'Test XAMPP Connection',
-                      color: const Color(0xFF3498DB),
-                      onPressed: () {
-                        BackendService.testConnection(context);
-                      },
-                    ),
-                    const SizedBox(height: 8),
-                  ],
+                          );
+                        },
+                      ),
+                      _buildAdminMenuButton(
+                        icon: Icons.cloud_done,
+                        label: 'Test XAMPP Connection',
+                        color: const Color(0xFF3498DB),
+                        onPressed: () {
+                          BackendService.testConnection(context);
+                        },
+                      ),
+                      const SizedBox(height: 8),
+                    ],
+                  ),
                 ),
               ),
             ],
