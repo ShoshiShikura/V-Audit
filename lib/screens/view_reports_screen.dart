@@ -258,17 +258,7 @@ class _ReportDocumentCard extends StatelessWidget {
                         ],
                       ),
                     ),
-                    const PopupMenuItem(
-                      value: 'export_data',
-                      child: Row(
-                        children: [
-                          Icon(Icons.download,
-                              color: Color(0xFFFF9800), size: 18),
-                          SizedBox(width: 8),
-                          Text('Export Data'),
-                        ],
-                      ),
-                    ),
+
                     if (SessionManager.isAdministrator(role) &&
                         doc.status == 'pending') ...[
                       const PopupMenuItem(

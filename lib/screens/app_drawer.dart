@@ -16,6 +16,7 @@ import '../services/session_manager.dart';
 import 'manage_templates_screen.dart';
 import 'approval_screen.dart';
 import '../db/database_helper.dart';
+import 'help_screen.dart';
 
 class DrawerHeaderSection extends StatelessWidget {
   final String userId;
@@ -215,6 +216,14 @@ class AppDrawer extends StatelessWidget {
             context,
             MaterialPageRoute(
               builder: (_) => ApprovalScreen(userId: userId, role: role),
+            ),
+          );
+          break;
+        case 'help':
+          Navigator.pushReplacement(
+            context,
+            MaterialPageRoute(
+              builder: (_) => HelpScreen(userId: userId, role: role),
             ),
           );
           break;
@@ -433,7 +442,7 @@ class AppDrawer extends StatelessWidget {
                   tileColor: tileColor('help'),
                   shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12)),
-                  onTap: currentPage == 'help' ? null : () {},
+                  onTap: currentPage == 'help' ? null : () => navigateTo('help'),
                 ),
                 ListTile(
                   leading: Icon(Icons.info_outline,

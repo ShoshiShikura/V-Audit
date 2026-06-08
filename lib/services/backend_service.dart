@@ -42,7 +42,7 @@ class BackendService {
       final response = await http.post(
         url,
         body: {'id': id, 'password': password},
-      );
+      ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode == 401) {
         String msg = 'Incorrect password';
@@ -106,7 +106,7 @@ class BackendService {
           'role': role,
           'fullName': fullName,
         },
-      );
+      ).timeout(const Duration(seconds: 4));
 
       if (response.statusCode != 200) {
         debugPrint('upsertUserToServer HTTP Error: ${response.statusCode} - ${response.body}');
@@ -125,7 +125,7 @@ class BackendService {
     final url = Uri.parse('$_baseUrl/ping.php');
 
     try {
-      final response = await http.get(url);
+      final response = await http.get(url).timeout(const Duration(seconds: 4));
 
       if (!context.mounted) return;
 

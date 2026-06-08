@@ -189,11 +189,28 @@ class _FindingSummaryScreenState extends State<FindingSummaryScreen> {
     );
 
     if (confirmed == true) {
+      final previousStatus = _documentStatus;
       await DatabaseHelper().updateDocumentStatus(widget.documentId, 'pending', rejectionRemark: '');
       
-      // Manually push to server
-      await BackendService.syncAuditDataToXampp();
+      // Attempt to push to server
+      final syncSuccess = await BackendService.syncAuditDataToXampp();
       
+      if (!syncSuccess) {
+        // Rollback to previous status because we are offline
+        await DatabaseHelper().updateDocumentStatus(widget.documentId, previousStatus, rejectionRemark: '');
+        
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(
+              content: Text('Cannot reach XAMPP server. Data is held locally. Please connect to the network to submit.'),
+              backgroundColor: Colors.orange,
+              duration: Duration(seconds: 4),
+            ),
+          );
+        }
+        return; // Stop here, do not update UI to pending
+      }
+
       setState(() => _documentStatus = 'pending');
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

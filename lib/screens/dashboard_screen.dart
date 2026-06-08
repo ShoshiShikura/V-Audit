@@ -2166,25 +2166,12 @@ class _DashboardScreenState extends State<DashboardScreen> {
         ),
       ),
       floatingActionButton: SessionManager.isAuditor(widget.role)
-          ? Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                FloatingActionButton(
-                  onPressed: _onImportDocument,
-                  backgroundColor: Colors.green,
-                  tooltip: 'Import Document',
-                  heroTag: 'import_fab',
-                  child: const Icon(Icons.file_upload, color: Colors.white),
-                ),
-                const SizedBox(width: 16),
-                FloatingActionButton(
-                  onPressed: _onAddNewDocument,
-                  backgroundColor: const Color(0xFF4B1EFF),
-                  tooltip: 'Add New Document',
-                  heroTag: 'add_fab',
-                  child: const Icon(Icons.add, color: Colors.white),
-                ),
-              ],
+          ? FloatingActionButton(
+              onPressed: _onAddNewDocument,
+              backgroundColor: const Color(0xFF4B1EFF),
+              tooltip: 'Add New Document',
+              heroTag: 'add_fab',
+              child: const Icon(Icons.add, color: Colors.white),
             )
           : null,
     );
