@@ -80,7 +80,21 @@ class _LoginScreenState extends State<LoginScreen> {
       final user = await _dbHelper.getUser(id);
       if (!mounted) return;
 
-      // ONLINE-FIRST APPROACH
+      // OFFLINE-FIRST (BYPASS NETWORK IF LOCAL CREDENTIALS MATCH)
+      if (user != null && user.activated && user.password == hashedPassword) {
+        final normalizedRole = SessionManager.normalizeRole(user.role);
+        await SessionManager.saveSession(user.id, normalizedRole);
+        if (!mounted) return;
+        Navigator.pushReplacement(
+          context,
+          MaterialPageRoute(
+            builder: (_) => DashboardScreen(role: normalizedRole, userId: user.id),
+          ),
+        );
+        return;
+      }
+
+      // If local credentials don't match or user not found, try ONLINE
       final online = await BackendService.verifyFirstLogin(
         id: id,
         password: password,
@@ -119,22 +133,8 @@ class _LoginScreenState extends State<LoginScreen> {
 
       // Server rejected it or couldn't be reached
       if (isNetworkError) {
-        // FALLBACK TO OFFLINE
-        if (user != null && user.activated && user.password == hashedPassword) {
-          final normalizedRole = SessionManager.normalizeRole(user.role);
-          await SessionManager.saveSession(user.id, normalizedRole);
-          if (!mounted) return;
-          Navigator.pushReplacement(
-            context,
-            MaterialPageRoute(
-              builder: (_) => DashboardScreen(role: normalizedRole, userId: user.id),
-            ),
-          );
-          return;
-        } else {
-          setState(() => _passwordError = 'Offline login failed: Invalid credentials or user not synced.');
-          return;
-        }
+        setState(() => _passwordError = 'Network error: Cannot reach server to sync user.');
+        return;
       } else {
         // Server actively rejected the login (wrong password / user not found)
         final msg = online.message?.toLowerCase() ?? '';
